@@ -6,7 +6,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 export const NATIONAL_FEEDS = {
   'Fox News': 'https://moxie.foxnews.com/google-publisher/latest.xml',
-  'CNN': 'https://news.google.com/rss/search?q=site:cnn.com+when:6h&hl=en-US&gl=US&ceid=US:en',
+  'CNN': 'https://www.cnn.com/sitemap/news.xml', // direct links with photos (Google News links can't be decoded from cloud hosts)
   'ABC News': 'https://abcnews.go.com/abcnews/topstories',
   'NBC News': 'https://feeds.nbcnews.com/nbcnews/public/news',
   'The Independent': 'https://www.independent.co.uk/us/rss',
@@ -60,6 +60,14 @@ export function parseRss(xml) {
     const source = strip(tag(b, 'source'));
     const image = attr(b, 'media:content', 'url') || attr(b, 'media:thumbnail', 'url') || (/<enclosure[^>]+type=["']image/i.test(b) ? attr(b, 'enclosure', 'url') : '');
     items.push({ title, link, ts, desc, source, image: /\.(mp4|mp3|m3u8)(\?|$)/i.test(image) ? '' : image });
+  }
+  if (!blocks.length) { // Google News sitemap format (<url><loc>, <news:title>, <image:loc>)
+    for (const b of xml.match(/<url>[\s\S]*?<\/url>/gi) || []) {
+      const title = strip(tag(b, 'news:title')), link = strip(tag(b, 'loc'));
+      const ts = Date.parse(strip(tag(b, 'news:publication_date')));
+      if (!title || !link || !Number.isFinite(ts) || /\/(cnn-underscored|videos?)\//.test(link)) continue;
+      items.push({ title, link, ts, desc: '', source: '', image: strip(tag(b, 'image:loc')) });
+    }
   }
   return items;
 }
