@@ -1,3 +1,5 @@
+import dns from 'node:dns';
+try { dns.setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
 // News feeds: RSS for national outlets, Google News searches for local stories,
 // Google News link decoding, and article metadata (og:image, summary, paragraphs).
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
@@ -136,7 +138,7 @@ async function decodeOnce(url, gid) {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', Origin: 'https://news.google.com', Referer: 'https://news.google.com/', 'X-Same-Domain': '1', ...(page.cookies ? { Cookie: page.cookies } : {}) },
     body: new URLSearchParams({ 'f.req': JSON.stringify([req]) }).toString(),
   });
-  if (!r.ok) throw new Error(`Google News decode HTTP ${r.status}`);
+  if (!r.ok) { const ip = (String(r.data).match(/IP address:\s*([0-9a-f.:]+)/i) || [])[1]; throw new Error(`Google News decode HTTP ${r.status}${ip ? ' (' + (ip.includes(':') ? 'IPv6' : 'IPv4') + ')' : ''}`); }
   const body = r.data.split('\n\n')[1];
   let real;
   try { real = JSON.parse(JSON.parse(body)[0][2])[1]; } catch { throw new Error('Google News decode reply not understood'); }
