@@ -29,7 +29,7 @@ export async function get(url, { timeout = 15000, headers = {}, method = 'GET', 
   try {
     const r = await fetch(url, { method, body, redirect: 'follow', signal: ctl.signal, headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...headers } });
     const data = as === 'buffer' ? Buffer.from(await r.arrayBuffer()) : await r.text();
-    return { ok: r.ok, status: r.status, url: r.url, type: r.headers.get('content-type') || '', data };
+    return { ok: r.ok, status: r.status, url: r.url, type: r.headers.get('content-type') || '', data, cookies: (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map(c => c.split(';')[0]).join('; ') };
   } finally { clearTimeout(t); }
 }
 
@@ -132,8 +132,8 @@ async function decodeOnce(url, gid) {
   const ts = (page.data.match(/data-n-a-ts="([^"]+)"/) || [])[1];
   if (!sg || !ts) throw new Error(`Google News page had no decode tokens (HTTP ${page.status}, ${String(page.url).slice(0, 60)})`);
   const req = [['Fbv4je', `["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"${gid}",${ts},"${sg}"]`]];
-  const r = await get('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+  const r = await get('https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je&hl=en-US&gl=US', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', Origin: 'https://news.google.com', Referer: 'https://news.google.com/', 'X-Same-Domain': '1', ...(page.cookies ? { Cookie: page.cookies } : {}) },
     body: new URLSearchParams({ 'f.req': JSON.stringify([req]) }).toString(),
   });
   if (!r.ok) throw new Error(`Google News decode HTTP ${r.status}`);
