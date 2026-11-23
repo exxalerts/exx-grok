@@ -1,0 +1,6 @@
+.env
+.env.*
+data/*
+!data/.keep
+node_modules/
+*.zip

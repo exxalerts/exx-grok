@@ -1,0 +1,8 @@
+// Shown in the Top 5 row until X keys are added (read from X on Nov 23, 2026).
+export const TOP_SNAPSHOT = [
+  { text: 'ALERT: Rep. Tim Burchett is running for U.S. Senate in Tennessee, against Senator John Thune’s wishes.', ts: Date.parse('2026-11-19T21:59:00Z'), likes: 8349, reposts: 878, replies: 345, views: 235800, url: 'https://x.com/ExxAlerts/status/2123536629164064964' },
+  { text: 'ALERT: New Air Force One carrying President Trump to Asia makes unplanned diversion in Alaska with old Air Force One on its tail. — Daily Mail.', ts: Date.parse('2026-11-16T23:55:00Z'), likes: 4178, reposts: 404, replies: 158, views: 558700, url: 'https://x.com/ExxAlerts/status/2122478794779095122' },
+  { text: 'ALERT: Iran is planning to detonate a dirty bomb in Washington D.C. and allegedly already has the bomb making materials inside the United States — CNN.', ts: Date.parse('2026-11-16T23:41:00Z'), likes: 2432, reposts: 331, replies: 792, views: 313000, url: 'https://x.com/ExxAlerts/status/2122475061949104381' },
+  { text: 'ALERT: Putin’s ‘sister-in-law’ names newborn baby ‘Melania’ ahead of Putin’s meeting with President Trump in China — Daily Mail.', ts: Date.parse('2026-11-18T17:42:00Z'), likes: 2741, reposts: 315, replies: 38, views: 60000, url: 'https://x.com/ExxAlerts/status/2123109600941711629' },
+  { text: 'ALERT: Son begged, “Daddy, please don’t kill me,” before the father said, “Sorry, buddy,” and then the 911 operator heard a loud bang.', ts: Date.parse('2026-11-20T20:12:00Z'), likes: 2122, reposts: 375, replies: 426, views: 595700, url: 'https://x.com/ExxAlerts/status/2123872101815992357' },
+];
