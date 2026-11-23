@@ -9,7 +9,7 @@ HOW @EXXAlerts WRITES (learned from 1,109 of the account's own posts, May-Nov 20
 - People: full name with age in commas the first time ("Richard Stevenson, 45,") or "51-year-old Terell Wayne Overton"; then LAST NAME only after that. Relationship tags: "a father of five", "Josh's wife", "her 17-year-old nephew", "who is a preacher".
 - Quotes are used constantly (64% of long posts): introduced with "said," / "stated," / "told police," or dropped in as their own paragraph in curly quotes. Ending on a quote is common.
 - Attribution: "allegedly" on anything not yet proven; "according to police/the DOJ/NBC News". Short posts on surprising claims may end "— Daily Mail." / "— CNN." or ", according to NBC News." Long posts never end with an outlet tag; the source goes inside the body ("Orange County Sheriff's Office stated on Instagram, ...").
-- Mechanics: numerals for every number ("2 kids", "3 prior DUIs", "130 feet"), Oxford comma, curly quotes, US state spelled out ("in Maryland", "in Southern California"). Explicit words are asterisked: s*x, s*xual, r*pe, su*cide, m*rder, f*ck, sh*t, b*tch.
+- Mechanics: numerals for every number ("2 kids", "3 prior DUIs", "130 feet"), Oxford comma, curly quotes, US state spelled out ("in Maryland", "in Southern California"). Explicit words are asterisked: s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch.
 - No hashtags, no links, no @mentions, no emojis in the writing.
 - What gets the most engagement: bodycam / 911 / surveillance stories (about 2x median), crime with a twist, "NEW:" footage and "BREAKING:" emergencies, longer 5+ paragraph posts with video, and for one-liners, US politics (GOP vs Democrats, Trump, Senate races) with a place tag or a big-outlet credit.`;
 
@@ -138,7 +138,7 @@ The incident has raised awareness among boat operators to wear their engine shut
 export const CENSOR = [
   [/\bsexually\b/gi, 's*xually'], [/\bsexual\b/gi, 's*xual'], [/\bsex\b/gi, 's*x'],
   [/\braped\b/gi, 'r*ped'], [/\braping\b/gi, 'r*ping'], [/\brapist(s?)\b/gi, 'r*pist$1'], [/\brape\b/gi, 'r*pe'],
-  [/\bsuicide\b/gi, 'su*cide'], [/\bmurdered\b/gi, 'm*rdered'], [/\bmurder\b/gi, 'm*rder'],
+  [/\bsuicide\b/gi, 'su*cide'],
   [/\bfucking\b/gi, 'f*cking'], [/\bfuck\b/gi, 'f*ck'], [/\bshit\b/gi, 'sh*t'], [/\bbitch\b/gi, 'b*tch'], [/\bgoddamn\b/gi, 'godd*mn'],
 ];
 
@@ -166,6 +166,6 @@ export const RULES_LONG = `LONG POST RULES (a multi-paragraph @EXXAlerts post):
 - Names: full name and age the first time ("Richard Stevenson, 45," or "51-year-old Terell Overton"), last name only after that. Include the names and ages of everyone involved (victims, suspects, officers, family, witnesses) whenever the material gives them; never invent names, ages or details, and if the material does not give them leave them out.
 - Dates and times stay vague: "earlier this week", "Monday night", "over the weekend", "last month", "earlier this year". No calendar dates or clock times unless the date itself is the story.
 - Attribution goes inside the body ("according to police", "the DOJ said in a statement", "the sheriff's office stated on Facebook"). Do NOT end with an outlet tag.
-- Numerals for all numbers, Oxford comma, curly quotes. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, m*rder, f*ck, sh*t, b*tch).
+- Numerals for all numbers, Oxford comma, curly quotes. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch; "murder" and "killed" stay uncensored).
 - No emojis, no hashtags, no links, no @mentions, no exclamation marks outside quotes.
 - Only use facts in the material. Never invent names, ages, numbers or quotes. If the material is thin, write 2-3 paragraphs rather than making things up.`;
