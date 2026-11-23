@@ -152,7 +152,7 @@ export const RULES_SHORT = `SHORT POST RULES (a one-line @EXXAlerts post):
 - NEVER reuse the article headline or its wording. Do not copy any run of 5+ consecutive words from the headline or source text. Find a fresh hook: the striking number, the quote, the irony, the twist, the stakes.
 - Numerals for numbers. Asterisk explicit words (s*x, r*pe, su*cide, f*ck).
 - No emojis, no hashtags, no links, no @mentions.
-- Never invent facts, numbers, names or quotes that are not in the material.`;
+- Never invent facts, numbers, names or quotes that are not in the material, and never guess a state the material doesn't name.`;
 
 export const RULES_LONG = `LONG POST RULES (a multi-paragraph @EXXAlerts post):
 - Line 1, the headline: "ALERT:" (or "NEW:" for newly released footage/interview/court video, "BREAKING:" for something unfolding now, "UPDATE:" for a follow-up), then ONE sentence, about 15-25 words, 90-160 characters, that states the most shocking, ironic or human fact. Start with the person's role ("Man", "Woman", "Mother", "Florida man", "17-year-old", "Elderly woman", "Trucker", "Judge"), not their name. Stack the twist with "after", "when", "while" or "as". Use "allegedly" when it is not proven. Do not copy the article headline (no run of 5+ of its words).
@@ -168,4 +168,6 @@ export const RULES_LONG = `LONG POST RULES (a multi-paragraph @EXXAlerts post):
 - Attribution goes inside the body ("according to police", "the DOJ said in a statement", "the sheriff's office stated on Facebook"). Do NOT end with an outlet tag.
 - Numerals for all numbers, Oxford comma, curly quotes. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch; "murder" and "killed" stay uncensored).
 - No emojis, no hashtags, no links, no @mentions, no exclamation marks outside quotes.
-- Only use facts in the material. Never invent names, ages, numbers or quotes. If the material is thin, write 2-3 paragraphs rather than making things up.`;
+- Only use facts in the material. Every body sentence must restate something the material explicitly says. Never invent names, ages, numbers, quotes, charges, custody status or outcomes, and never guess a state from a county, city or outlet name (many counties share names across states); leave the state out if the material doesn't say it.
+- If the material is thin, stop early: a headline plus 1-2 body paragraphs is fine. Never pad with filler like "the investigation continues" or "remains in custody" unless the material says so.
+- Write "in Dallas, Texas, was" with a comma after the state, as the account does.`;
