@@ -199,7 +199,7 @@ async function route(req, res) {
       const u = url.searchParams.get('url') || '';
       if (!/^https?:\/\//.test(u)) return json(res, 400, { error: 'bad url' });
       const m = await articleMeta(u);
-      return json(res, 200, { url: m.url, image: m.image, description: m.description, blocked: m.blocked });
+      return json(res, 200, { url: m.url, image: m.image, description: m.description, blocked: m.blocked, decodeError: m.decodeError || undefined });
     }
 
     if (p === '/api/img') {

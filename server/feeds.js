@@ -119,21 +119,38 @@ export async function fetchLocalCandidates({ hours = 3 } = {}) {
 
 // ---- Google News article links -> publisher URL ----
 const gcache = new Map();
-export async function decodeGoogleNews(url) {
-  if (!/news\.google\.com\/(rss\/)?articles\//.test(url)) return url;
-  if (gcache.has(url)) return gcache.get(url);
-  const gid = url.split('/articles/')[1].split('?')[0];
+// Google rate-limits bursts from cloud IPs, so decode a few at a time and retry once.
+let gActive = 0; const gQueue = [];
+async function gSlot(fn) {
+  if (gActive >= 2) await new Promise(r => gQueue.push(r));
+  gActive++;
+  try { return await fn(); } finally { gActive--; const n = gQueue.shift(); if (n) n(); }
+}
+async function decodeOnce(url, gid) {
   const page = await get(`https://news.google.com/rss/articles/${gid}`);
   const sg = (page.data.match(/data-n-a-sg="([^"]+)"/) || [])[1];
   const ts = (page.data.match(/data-n-a-ts="([^"]+)"/) || [])[1];
-  if (!sg || !ts) throw new Error('Google News link could not be decoded');
+  if (!sg || !ts) throw new Error(`Google News page had no decode tokens (HTTP ${page.status}, ${String(page.url).slice(0, 60)})`);
   const req = [['Fbv4je', `["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"${gid}",${ts},"${sg}"]`]];
   const r = await get('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
     body: new URLSearchParams({ 'f.req': JSON.stringify([req]) }).toString(),
   });
+  if (!r.ok) throw new Error(`Google News decode HTTP ${r.status}`);
   const body = r.data.split('\n\n')[1];
-  const real = JSON.parse(JSON.parse(body)[0][2])[1];
+  let real;
+  try { real = JSON.parse(JSON.parse(body)[0][2])[1]; } catch { throw new Error('Google News decode reply not understood'); }
+  if (!/^https?:\/\//.test(real || '')) throw new Error('Google News decode returned no URL');
+  return real;
+}
+export async function decodeGoogleNews(url) {
+  if (!/news\.google\.com\/(rss\/)?articles\//.test(url)) return url;
+  if (gcache.has(url)) return gcache.get(url);
+  const gid = url.split('/articles/')[1].split('?')[0];
+  const real = await gSlot(async () => {
+    try { return await decodeOnce(url, gid); }
+    catch (e) { await new Promise(r => setTimeout(r, 1500)); return decodeOnce(url, gid); }
+  });
   gcache.set(url, real);
   return real;
 }
@@ -152,9 +169,15 @@ function metaTag(html, names) {
 export async function articleMeta(url) {
   const c = meta.get(url);
   if (c && Date.now() - c.t < 6 * 3600e3) return c.data;
-  let real = url;
-  try { real = await decodeGoogleNews(url); } catch { /* keep google url */ }
+  let real = url, decodeError = '';
+  try { real = await decodeGoogleNews(url); } catch (e) { decodeError = String(e.message || e); }
   let data = { url: real, image: '', description: '', paragraphs: [], blocked: false };
+  if (decodeError) { // a Google News page only carries Google's own logo, so don't show it as the story photo
+    data = { ...data, blocked: true, decodeError };
+    meta.set(url, { t: Date.now() - 6 * 3600e3 + 5 * 60e3, data }); // retry after 5 minutes
+    console.warn('google news decode failed:', decodeError);
+    return data;
+  }
   try {
     const r = await get(real, { timeout: 15000 });
     if (!r.ok) { data.blocked = true; data.status = r.status; }
