@@ -67,6 +67,7 @@ function renderStatus() {
   const k = $('#keys'); k.replaceChildren(
     h('span', { class: 'key' + (s.keys.ai ? ' on' : ''), title: s.keys.ai ? 'AI writing on (' + s.model + ')' : 'AI key missing' }, 'AI'),
     h('span', { class: 'key' + (s.keys.xRead ? ' on' : ''), title: s.keys.xRead ? 'X reads on' : 'X read keys missing' }, 'X feed'),
+    s.publish === false ? h('span', { class: 'key', title: 'Posting to X is off on this shared version' }, 'Publish off') :
     h('span', { class: 'key' + (s.keys.xPost ? ' on' : ''), title: s.keys.xPost ? (s.dryRun ? 'Publish in DRY RUN' : 'Publishing on') : 'X posting keys missing' }, s.dryRun ? 'Publish (dry run)' : 'Publish'));
   $('#notices').replaceChildren(...s.notices.map(n => h('div', { class: 'notice ' + n.level }, n.text)));
   $('#pubUser').textContent = '@' + s.username;
@@ -263,7 +264,8 @@ function renderEditor(id, note = '', isErr = false) {
     pubBtn.disabled = !ta.value.trim() || (n > limit && d.mode === 'short');
   };
   ta.addEventListener('input', upd);
-  ta.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); openPublish(id); } });
+  const canPub = !(S.status && S.status.publish === false);
+  ta.addEventListener('keydown', e => { if (canPub && (e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); openPublish(id); } });
   const file = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm' });
   file.addEventListener('change', () => { const f = file.files[0]; if (f) setMedia(id, f); });
   const preview = h('div', { class: 'preview' });
@@ -273,10 +275,10 @@ function renderEditor(id, note = '', isErr = false) {
   const pubBtn = h('button', { class: 'btn btn-strong', onclick: () => openPublish(id), title: 'Publish (Ctrl+Enter)' }, 'Publish');
   box.replaceChildren(
     ta, counter,
-    h('div', { class: 'attach' }, h('span', { class: 'muted' }, 'Attach photo or video:'), file),
+    canPub ? h('div', { class: 'attach' }, h('span', { class: 'muted' }, 'Attach photo or video:'), file) : '',
     preview,
     h('div', { class: 'actions' },
-      pubBtn,
+      canPub ? pubBtn : '',
       h('button', { class: 'btn btn-tone', onclick: async () => { try { await navigator.clipboard.writeText(ta.value); toast('Copied'); } catch { toast('Copy blocked, select the text instead'); } } }, 'Copy'),
       h('button', { class: 'btn btn-tone', onclick: () => { d.text = d.orig; renderEditor(id); }, disabled: !d.orig }, 'Reset draft'),
       h('button', { class: 'btn btn-tone', onclick: () => openVideo(S.cards.get(id).item, d, { api, toast, imgUrl, setMedia: f => setMedia(id, f), status: S.status }) }, 'Generate Video'),
@@ -295,6 +297,7 @@ function setMedia(id, f) {
 // ---------- publish ----------
 let pubCtx = null;
 function openPublish(id) {
+  if (S.status && S.status.publish === false) return toast('Posting to X is off on this shared version. Use Copy instead.');
   const d = draftOf(id); const text = d.text.trim();
   if (!text) return toast('Write something first');
   pubCtx = { id };

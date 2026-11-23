@@ -24,14 +24,6 @@ services:
         value: grok-4.3
       - key: X_BEARER_TOKEN
         sync: false
-      - key: X_API_KEY
-        sync: false
-      - key: X_API_SECRET
-        sync: false
-      - key: X_ACCESS_TOKEN
-        sync: false
-      - key: X_ACCESS_TOKEN_SECRET
-        sync: false
       - key: X_USERNAME
         value: EXXAlerts
       - key: X_FEED_ACCOUNTS
@@ -44,5 +36,7 @@ services:
         value: "60"
       - key: TRENDS_REFRESH_MIN
         value: "15"
+      - key: ALLOW_PUBLISH
+        value: "0"
       - key: DRY_RUN
         value: "0"

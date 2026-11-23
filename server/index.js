@@ -117,11 +117,13 @@ const readJson = async req => JSON.parse((await readBody(req, 2e6)).toString('ut
 
 function setupNotices() {
   const n = [];
-  if (!envFileFound) n.push({ level: 'warn', text: 'No .env file found. Copy .env.example to .env and add your keys, then restart (npm start). News still works without keys.' });
+  if (!envFileFound && !has.ai && !has.bearer) n.push({ level: 'warn', text: 'No .env file found. Copy .env.example to .env and add your keys, then restart (npm start). News still works without keys.' });
+  if (!cfg.allowPublish) { n.push({ level: 'info', text: 'Shared version: posting to X is turned off here. Generate drafts, edit them and use Copy to post from your own account.' }); }
   if (!has.ai) n.push({ level: 'warn', key: 'ai', text: 'AI key missing (AI_API_KEY): Generate short/long posts, the smart Local picks and video footage ideas are off. Get a key at console.x.ai.' });
-  if (!has.bearer && !has.oauth1) n.push({ level: 'warn', key: 'x', text: 'X keys missing: the X feed and your live Top 5 are off, and Publish is disabled. Add X_BEARER_TOKEN and the four OAuth 1.0a keys from developer.x.com.' });
+  if (!cfg.allowPublish) { if (!has.bearer) n.push({ level: 'warn', key: 'x', text: 'X_BEARER_TOKEN missing: the X feed, Top 5 and X trends are off.' }); }
+  else if (!has.bearer && !has.oauth1) n.push({ level: 'warn', key: 'x', text: 'X keys missing: the X feed and your live Top 5 are off, and Publish is disabled. Add X_BEARER_TOKEN and the four OAuth 1.0a keys from developer.x.com.' });
   else if (!has.oauth1) n.push({ level: 'warn', key: 'x', text: 'X OAuth 1.0a keys missing (X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET): Publish and media upload are disabled.' });
-  if (cfg.dryRun) n.push({ level: 'info', text: 'DRY_RUN is on: Publish shows what would be posted but sends nothing to X.' });
+  if (cfg.dryRun && cfg.allowPublish) n.push({ level: 'info', text: 'DRY_RUN is on: Publish shows what would be posted but sends nothing to X.' });
   return n;
 }
 const hasFfmpeg = () => new Promise(r => execFile('ffmpeg', ['-version'], e => r(!e)));
@@ -172,7 +174,7 @@ async function route(req, res) {
     if (req.method === 'POST' && (req.headers['x-exx-app'] !== '1' || !Auth.sameOrigin(req))) return json(res, 403, { error: 'Forbidden' });
 
     if (p === '/api/status') return json(res, 200, {
-      keys: { ai: has.ai, xRead: has.bearer || has.oauth1, xPost: has.oauth1 }, auth: Auth.authEnabled(), dryRun: cfg.dryRun, model: has.ai ? cfg.aiModel : null,
+      keys: { ai: has.ai, xRead: has.bearer || has.oauth1, xPost: cfg.allowPublish && has.oauth1 }, publish: cfg.allowPublish, auth: Auth.authEnabled(), dryRun: cfg.dryRun, model: has.ai ? cfg.aiModel : null,
       username: cfg.xUsername, accounts: cfg.feedAccounts, refresh: { news: cfg.newsMin, x: cfg.xFeedMin, top: cfg.topMin, trends: cfg.trendsMin }, notices: setupNotices(), ffmpeg: await hasFfmpeg(),
     });
 
@@ -244,6 +246,7 @@ async function route(req, res) {
     }
 
     if (p === '/api/upload' && req.method === 'POST') {
+      if (!cfg.allowPublish) return json(res, 403, { error: 'Posting to X is turned off on this shared version.', code: 'PUBLISH_OFF' });
       const mime = String(req.headers['content-type'] || '').split(';')[0];
       if (!/^(image\/(jpeg|png|webp|gif)|video\/mp4|video\/quicktime)$/.test(mime)) return json(res, 400, { error: `X accepts JPG, PNG, WEBP, GIF images and MP4/MOV video. This file is ${mime || 'unknown'}.` });
       const buf = await readBody(req, 512e6);
@@ -255,6 +258,7 @@ async function route(req, res) {
     }
 
     if (p === '/api/publish' && req.method === 'POST') {
+      if (!cfg.allowPublish) return json(res, 403, { error: 'Posting to X is turned off on this shared version.', code: 'PUBLISH_OFF' });
       const { text, media_ids = [] } = await readJson(req);
       const t = String(text || '').trim();
       if (!t) return json(res, 400, { error: 'Post text is empty.' });

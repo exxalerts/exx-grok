@@ -55,6 +55,7 @@ export const cfg = {
   xFeedMin: num('X_FEED_REFRESH_MIN', 10),
   topMin: num('TOP_REFRESH_MIN', 60),
   trendsMin: num('TRENDS_REFRESH_MIN', 15),
+  allowPublish: !/^(0|false|no|off)$/i.test(e('ALLOW_PUBLISH', '1')),
   dryRun: e('DRY_RUN') === '1' || e('DRY_RUN').toLowerCase() === 'true',
 };
 

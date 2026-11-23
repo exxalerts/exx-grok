@@ -4,3 +4,4 @@ data/*
 !data/.keep
 node_modules/
 *.zip
+!.env.example
