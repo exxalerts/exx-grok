@@ -1,6 +1,6 @@
 // AI writing via any OpenAI-compatible Chat Completions API (xAI by default).
 import { cfg, has } from './env.js';
-import { STYLE_FINDINGS, SHORT_EXAMPLES, LONG_EXAMPLES, RULES_SHORT, RULES_LONG } from './style.js';
+import { STYLE_FINDINGS, SHORT_EXAMPLES, LONG_EXAMPLES, RULES_SHORT, RULES_LONG, CENSOR } from './style.js';
 
 export async function chat(messages, { json = false, temperature = 0.8, max_tokens = 1200 } = {}) {
   if (!has.ai) { const e = new Error('AI_API_KEY is missing in .env'); e.code = 'NO_AI'; throw e; }
@@ -33,11 +33,17 @@ ${STYLE_FINDINGS}`;
 // ---- Post cleanup and headline-reuse check ----
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{2B00}-\u{2BFF}]/gu;
 export function cleanPost(text, mode) {
-  let t = text.replace(/^```[\s\S]*?\n|```$/g, '').replace(/^["“]|["”]$/g, '').trim();
+  let t = text.replace(/^```[\s\S]*?\n|```$/g, '').trim();
+  if (/^["“]/.test(t) && /["”]$/.test(t)) t = t.slice(1, -1).trim(); // only unwrap a fully quoted reply
   t = t.replace(/^(short|long) post:\s*/i, '');
   t = t.replace(EMOJI, '').replace(/(^|\s)#[\p{L}\d_]+/gu, '$1').replace(/https?:\/\/\S+/g, '').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
-  if (!/^(ALERT|NEW):/.test(t)) t = 'ALERT: ' + t;
+  if (!/^(ALERT|NEW|BREAKING|UPDATE):/.test(t)) t = 'ALERT: ' + t.replace(/^[A-Z]{3,12}:\s*/, '');
+  for (const [re, to] of CENSOR) t = t.replace(re, to);
   if (mode === 'short') t = t.replace(/\s*\n+\s*/g, ' ');
+  else {
+    t = t.split(/\n+/).map(x => x.trim()).filter(Boolean).join('\n\n');
+    t = t.replace(/\n\n[—–-]\s*[A-Z][\w .&'’]{1,40}\.?$/, '').replace(/\s+[—–]\s*[A-Z][\w .&'’]{1,40}\.$/, '');
+  }
   return t;
 }
 const words = s => s.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
@@ -67,11 +73,11 @@ export async function generatePost(item, mode, art, { instructions = '' } = {}) 
     isShort ? RULES_SHORT : RULES_LONG,
     '',
     isShort ? 'Examples of real high-performing @EXXAlerts short posts:\n' + SHORT_EXAMPLES.map(s => '- ' + s).join('\n')
-      : 'Examples of real @EXXAlerts long posts (shape only):\n\n' + LONG_EXAMPLES.join('\n\n---\n\n'),
+      : 'Real high-performing @EXXAlerts long posts. Match this voice, rhythm and paragraph structure exactly, but never copy their facts, and follow the rules above where an example differs (e.g. exact dates, a city in the headline):\n\n' + LONG_EXAMPLES.join('\n\n---\n\n'),
     '',
     'MATERIAL:', material(item, art),
     '',
-    outlet ? `Outlet to cite at the end: ${outlet}` : 'This came from another X account: do not cite that account by @handle.',
+    outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Credit it inside the body only if useful ("according to ${outlet}"); never add an outlet tag at the end.`) : 'This came from another X account: do not cite that account by @handle.',
     instructions ? `Extra instructions from the editor: ${instructions}` : '',
     '',
     `Write ONE ${isShort ? 'short' : 'long'} post. Output only the post text, nothing else.`,
@@ -84,7 +90,7 @@ export async function generatePost(item, mode, art, { instructions = '' } = {}) 
     overlap = headlineOverlap(isShort ? text : text.split('\n')[0], item.title);
   }
   if (isShort && text.length > 280) {
-    text = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `Shorten this to under 270 characters, same style, keep the outlet tag:\n${text}` }], { temperature: 0.4, max_tokens: 200 }), 'short');
+    text = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `Shorten this to under 260 characters, same style and opener, keep any outlet credit:\n${text}` }], { temperature: 0.4, max_tokens: 200 }), 'short');
   }
   return { text, overlap, thin: !art?.paragraphs?.length && !item.summary };
 }
