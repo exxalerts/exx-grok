@@ -29,25 +29,9 @@
   <div id="notices" class="notices"></div>
 
   <main>
-    <section class="trending" id="trending">
-      <div class="section-head">
-        <h2>Trending now</h2>
-        <span id="trendUpdated" class="muted small"></span>
-      </div>
-      <div class="trend-blocks">
-        <section class="trend-block" data-tone="x" data-platform="x" id="col-trend-x">
-          <div class="trend-head"><h3>X</h3><span class="trend-src" id="src-trend-x"></span><span class="count" id="n-trend-x">0</span></div>
-          <div class="trend-lists" id="b-trend-x"></div>
-        </section>
-        <section class="trend-block" data-tone="fb" data-platform="facebook" id="col-trend-facebook">
-          <div class="trend-head"><h3>Facebook</h3><span class="trend-src" id="src-trend-facebook"></span><span class="count" id="n-trend-facebook">0</span></div>
-          <div class="trend-lists" id="b-trend-facebook"></div>
-        </section>
-        <section class="trend-block" data-tone="ig" data-platform="instagram" id="col-trend-instagram">
-          <div class="trend-head"><h3>Instagram</h3><span class="trend-src" id="src-trend-instagram"></span><span class="count" id="n-trend-instagram">0</span></div>
-          <div class="trend-lists" id="b-trend-instagram"></div>
-        </section>
-      </div>
+    <section class="top5">
+      <div class="section-head"><h2>Top 5 posts this week</h2><span id="topNote" class="muted small"></span></div>
+      <div id="top" class="top-grid"></div>
     </section>
 
     <section class="filters">
@@ -72,9 +56,25 @@
       </div>
     </section>
 
-    <section class="top5">
-      <div class="section-head"><h2>Top 5 posts this week</h2><span id="topNote" class="muted small"></span></div>
-      <div id="top" class="top-grid"></div>
+    <section class="trending" id="trending">
+      <div class="section-head">
+        <h2>Trending now</h2>
+        <span id="trendUpdated" class="muted small"></span>
+      </div>
+      <div class="trend-blocks">
+        <section class="trend-block" data-tone="x" data-platform="x" id="col-trend-x">
+          <div class="trend-head"><h3>X</h3><span class="trend-src" id="src-trend-x"></span><span class="count" id="n-trend-x">0</span></div>
+          <div class="trend-lists" id="b-trend-x"></div>
+        </section>
+        <section class="trend-block" data-tone="fb" data-platform="facebook" id="col-trend-facebook">
+          <div class="trend-head"><h3>Facebook</h3><span class="trend-src" id="src-trend-facebook"></span><span class="count" id="n-trend-facebook">0</span></div>
+          <div class="trend-lists" id="b-trend-facebook"></div>
+        </section>
+        <section class="trend-block" data-tone="ig" data-platform="instagram" id="col-trend-instagram">
+          <div class="trend-head"><h3>Instagram</h3><span class="trend-src" id="src-trend-instagram"></span><span class="count" id="n-trend-instagram">0</span></div>
+          <div class="trend-lists" id="b-trend-instagram"></div>
+        </section>
+      </div>
     </section>
   </main>
 
