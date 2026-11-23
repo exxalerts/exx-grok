@@ -52,7 +52,8 @@ export const RULES_LONG = `LONG POST RULES:
 - First line: "ALERT:" headline sentence with a strong hook (not copied from the article headline).
 - The headline (first line only) may name a general state (e.g. "Ohio", "New York") or a college campus. Never name an exact city, town, street, neighborhood or venue in the headline. Exact locations may appear in the body paragraphs.
 - Be less specific on dates and times. Replace exact calendar dates and clock times with vaguer phrasing ("earlier this week", "Monday night", "over the weekend", "last month") unless the exact date is itself the story.
-- Include victims' names and ages when they appear in the material. Never invent names or ages; if the material does not give them, leave them out.
+- Keep the headline exactly as it would otherwise be; add personal details only in the body paragraphs.
+- In the body, include the names and ages of the people involved (victims, suspects, officers, witnesses, family members, officials) whenever the material gives them, plus other personal details the material reports (hometown, school, job, relationship to others). Never invent names, ages or details; if the material does not give them, leave them out.
 - Then 4–8 short paragraphs (1–2 sentences each), separated by a blank line: who (name, age), what happened, where, a direct quote from police/officials/family if the material has one, and where the case or story stands now.
 - No emojis, no hashtags, no links. You may end with a final line " — <Outlet>." citing the source for news stories.
 - Only use facts in the material. Never invent names, ages, numbers or quotes. If the material is thin, write fewer paragraphs rather than making things up.`;
