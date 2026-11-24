@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { cfg, has, envFileFound, ROOT } from './env.js';
-import { fetchNational, fetchLocalCandidates, articleMeta, get } from './feeds.js';
+import { fetchNational, fetchLocalCandidates, articleMeta, findCoverage, textChars, get } from './feeds.js';
 import * as X from './xapi.js';
 import * as AI from './ai.js';
 import { TOP_SNAPSHOT } from './snapshot.js';
@@ -221,7 +221,13 @@ async function route(req, res) {
       if (!has.ai) return json(res, 400, { error: 'AI key missing. Add AI_API_KEY to .env and restart the app.', code: 'NO_AI' });
       const { item, mode, instructions } = await readJson(req);
       if (!item?.title || !['short', 'long'].includes(mode)) return json(res, 400, { error: 'bad request' });
-      const art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.url).catch(() => null);
+      let art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.url).catch(() => null);
+      if (mode === 'long' && item.kind !== 'trend') { // long posts need the full story: fall back to other coverage, then web research
+        art = { ...(art || {}) };
+        const have = () => textChars(art) + textChars(art.coverage) + (item.kind === 'x' ? (item.title || '').length : 0);
+        if (item.kind !== 'x' && have() < 1500) art.coverage = await findCoverage(item.title, { exclude: art.url || '' }).catch(() => null);
+        if (have() < 1500) art.research = await AI.research(item, [item.summary, art.description, ...(art.paragraphs || []), ...(art.coverage?.paragraphs || [])].filter(Boolean).join('\n')).catch(() => null);
+      }
       try { return json(res, 200, await AI.generatePost(item, mode, art, { instructions })); }
       catch (e) { return json(res, 502, { error: e.message }); }
     }

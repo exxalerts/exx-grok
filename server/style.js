@@ -27,9 +27,20 @@ export const SHORT_EXAMPLES = [
   `ALERT: New Air Force One carrying President Trump to Asia makes unplanned diversion in Alaska with old Air Force One on its tail. — Daily Mail.`,
 ];
 
-// Real top-performing @EXXAlerts long posts (by total engagement), verbatim except two typo fixes.
+// Real @EXXAlerts long posts. The first is the user's own reference post (Nov 23, 2026); the rest are top performers by engagement, verbatim except two typo fixes.
 // Some include exact dates from the source; generated posts must still follow the vague-dates rule.
 export const LONG_EXAMPLES = [
+  `ALERT: Florida man who dubbed himself an "elite-ranked pedophile" received over 300 years in prison.
+
+Frederick Hildenbrand, 55, was found guilty of producing and possessing videos of child s*xual abuse in May.
+
+Hildenbrand was investigated by the Northeast Florida INTERCEPT Task Force and was caught in 2024 when his storage unit was auctioned off for nonpayment.
+
+Investigators found soiled, individually wrapped, and labeled children's panties, as well as videotapes and electronic devices containing child s*xual abuse material.
+
+The Department of Justice released a statement saying, "One of his computers contained two versions of a “poem” written by Hildenbrand about his insatiable lust for children, in which he described himself as “an Elite ranked pedophile” for over 30 years."
+
+Hildenbrand was sentenced to 310 years in federal prison.`,
   `ALERT: Woman arrested after using her access to the sensitive court database to warn members of a drug trafficking operation who had arrest warrants.
 
 Crystal Lawson, 32, was hired in 2022 as a Juvenile Probation Officer for the Florida Department of Juvenile Justice before being terminated from that role for a battery charge later that year.
@@ -155,19 +166,21 @@ export const RULES_SHORT = `SHORT POST RULES (a one-line @EXXAlerts post):
 - Never invent facts, numbers, names or quotes that are not in the material, and never guess a state the material doesn't name.`;
 
 export const RULES_LONG = `LONG POST RULES (a multi-paragraph @EXXAlerts post):
-- Line 1, the headline: "ALERT:" (or "NEW:" for newly released footage/interview/court video, "BREAKING:" for something unfolding now, "UPDATE:" for a follow-up), then ONE sentence, about 15-25 words, 90-160 characters, that states the most shocking, ironic or human fact. Start with the person's role ("Man", "Woman", "Mother", "Florida man", "17-year-old", "Elderly woman", "Trucker", "Judge"), not their name. Stack the twist with "after", "when", "while" or "as". Use "allegedly" when it is not proven. Do not copy the article headline (no run of 5+ of its words).
+- Line 1, the headline: "ALERT:" (or "NEW:" for newly released footage/interview/court video, "BREAKING:" for something unfolding now, "UPDATE:" for a follow-up), then ONE sentence, about 15-25 words, that states the most shocking, ironic or human fact. Start with the person's role ("Florida man", "Woman", "Mother", "17-year-old", "Judge"), not their name. Put the most striking phrase from the story in quotes when there is one ("dubbed himself an "elite-ranked pedophile""). Use "allegedly" when it is not proven. Do not copy the article headline (no run of 5+ of its words).
 - The headline may name only a general US state (e.g. "in Ohio", "Florida man") or a college campus. Never put a city, town, county, street, neighborhood, business or venue in the headline; those go in the body.
 - Keep the headline exactly as it would otherwise be; the personal details go only in the body.
-- Body: 3-6 paragraphs, ONE sentence each (about 100-200 characters), every paragraph separated by a blank line. Total post about 450-950 characters.
-  - Paragraph 2 sets the scene: "Full Name, age, was <doing what> at/in <exact place, City, State> when <what happened>." If no name, "A man in City, State, was ... when ...".
-  - Next paragraphs: what happened next, in order, one beat per paragraph. Add the reported personal details: ages, relationships ("a father of five", "her 17-year-old nephew"), job, school, hometown, prior record.
-  - A direct quote from police, officials, a victim, family or a witness when the material has one, introduced with "said," / "stated," / "told police," or as its own paragraph in curly quotes.
-  - Last paragraph: where it stands now (charged with / faces / held without bail / sentenced to / in the hospital / investigation ongoing / raised $X). Ending on a strong quote is also fine.
-- Names: full name and age the first time ("Richard Stevenson, 45," or "51-year-old Terell Overton"), last name only after that. Include the names and ages of everyone involved (victims, suspects, officers, family, witnesses) whenever the material gives them; never invent names, ages or details, and if the material does not give them leave them out.
-- Dates and times stay vague: "earlier this week", "Monday night", "over the weekend", "last month", "earlier this year". No calendar dates or clock times unless the date itself is the story.
-- Attribution goes inside the body ("according to police", "the DOJ said in a statement", "the sheriff's office stated on Facebook"). Do NOT end with an outlet tag.
-- Numerals for all numbers, Oxford comma, curly quotes. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch; "murder" and "killed" stay uncensored).
+- Body: 4 to 7 short factual paragraphs, ONE or two sentences each, every paragraph separated by a blank line, in story order:
+  1. Who: "Full Name, age, was ..." (the person at the center, and what they were charged with, convicted of or did).
+  2. What happened, or how it was found or discovered.
+  3. The key evidence or the most shocking concrete details, stated plainly.
+  4. A direct quote from an official, a court or DOJ document, police, a victim, family or a witness, copied word for word from the material: 'The Department of Justice released a statement saying, "..."' or 'Police said, "..."'. Only when the material has one.
+  5. The outcome last: the sentence, the charges, bail, or where it stands now ("Hildenbrand was sentenced to 310 years in federal prison.").
+- Names: full name and age the first time, last name only after that. Include the names and ages of everyone involved (victims, suspects, officers, family, witnesses) and their reported personal details (relationship, job, hometown, school, prior record) whenever the material gives them. Never invent names, ages or details; if the material does not give them, leave them out.
+- Dates and times stay vague: a month or year is fine ("in May", "in 2024"); no full calendar dates, weekdays with dates, or clock times unless the date itself is the story.
+- Name agencies and officials as the people who said or did something ("The Department of Justice released a statement saying", "the Clay County Sheriff's Office said"). NEVER write a source line about the outlet or website ("according to firstcoastnews.com", "the outlet reported", "court records showed" without a detail). Do NOT end with an outlet tag.
+- Plain declarative sentences that state facts; no filler like "The case drew attention" or "The term appears in documents".
+- Numerals for all numbers, Oxford comma, curly or straight quotes as in the material. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch; "murder" and "killed" stay uncensored).
 - No emojis, no hashtags, no links, no @mentions, no exclamation marks outside quotes.
-- Only use facts in the material. Every body sentence must restate something the material explicitly says. Never invent names, ages, numbers, quotes, charges, custody status or outcomes, and never guess a state from a county, city or outlet name (many counties share names across states); leave the state out if the material doesn't say it.
-- If the material is thin, stop early: a headline plus 1-2 body paragraphs is fine. Never pad with filler like "the investigation continues" or "remains in custody" unless the material says so.
+- Only use facts in the material (article text, other coverage, research notes). Every body sentence must restate something the material explicitly says. Never invent names, ages, numbers, quotes, charges, custody status or outcomes, and never guess a state from a county, city or outlet name; leave the state out if the material doesn't say it.
+- If the material is thin, write fewer paragraphs (a headline plus 1-3 body paragraphs is fine) rather than padding.
 - Write "in Dallas, Texas, was" with a comma after the state, as the account does.`;

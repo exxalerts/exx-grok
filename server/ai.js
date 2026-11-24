@@ -41,7 +41,8 @@ export function cleanPost(text, mode) {
   for (const [re, to] of CENSOR) t = t.replace(re, to);
   if (mode === 'short') t = t.replace(/\s*\n+\s*/g, ' ');
   else {
-    t = t.split(/\n+/).map(x => x.trim()).filter(Boolean).join('\n\n');
+    t = t.replace(/,?\s*(according to|reported by|per)\s+(the\s+)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|tv|news)\b/gi, '');
+    t = t.split(/\n+/).map(x => x.trim()).filter(x => x && !/^[\w\s.]*\.(com|org|net|tv)\s+(reported|reports)[^.]*\.?$/i.test(x)).join('\n\n');
     t = t.replace(/\n\n[—–-]\s*[A-Z][\w .&'’]{1,40}\.?$/, '').replace(/\s+[—–]\s*[A-Z][\w .&'’]{1,40}\.$/, '');
   }
   return t;
@@ -62,8 +63,48 @@ function material(item, art) {
   if (item.kind === 'trend') lines.push('Rules for trends: only use the material above. Do not invent incidents, names, ages, locations, or counts. If the facts are thin, write a cautious hook that the topic is trending, not a news story with details you do not have. Do not cite Google Trends or "Facebook trend" as if it were a news outlet.');
   if (art?.description && art.description !== item.summary) lines.push(`Description: ${art.description}`);
   if (art?.paragraphs?.length) lines.push('Article text:\n' + art.paragraphs.join('\n'));
+  if (art?.coverage?.paragraphs?.length) lines.push(`Other coverage of the same case (${art.coverage.src}${art.coverage.date ? ', published ' + art.coverage.date : ''}; it may be older than the headline, so the headline's news, e.g. a sentence or verdict, wins where they differ):\n` + art.coverage.paragraphs.join('\n'));
+  if (art?.research) lines.push('Research notes gathered from other reporting on this same story (facts only, with sources):\n' + art.research);
   if (item.loc) lines.push(`Location: ${item.loc}`);
   return lines.join('\n');
+}
+
+// Leave out any example about the same story, so the model writes from the material instead of copying an old post.
+const sigWords = t => new Set(String(t).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 5));
+function examplesFor(item) {
+  const h = sigWords(item.title);
+  return LONG_EXAMPLES.filter(ex => [...sigWords(ex.split('\n')[0])].filter(w => h.has(w)).length < 4);
+}
+
+// ---- Web research (xAI Responses API + web_search) for stories whose article can't be read ----
+export async function research(item, known = '') {
+  if (!has.ai || !/x\.ai/.test(cfg.aiBase)) return null;
+  const prompt = `Find the news reporting about this specific story and return a fact sheet for a reporter.
+Headline: ${item.title}
+Outlet: ${item.src}${item.url && !/news\.google\.com/.test(item.url) ? '\nLink: ' + item.url : ''}
+${known ? 'Already known:\n' + known.slice(0, 1500) + '\n' : ''}
+Search the web (local TV and newspaper sites, police, sheriff and court pages, and justice.gov press releases for federal cases).
+Return plain text only:
+- Every concrete fact about THIS story: full names, ages, hometowns, relationships, jobs; what happened in order; how it was discovered; key evidence; charges; verdict and sentence; current status.
+- Direct quotes copied word for word, each with who said it and where.
+- Keep dates as they appear in the sources.
+- Last line: "Sources:" followed by the URLs you used.
+Only include facts the sources state about this exact case. No commentary, no guessing. If you cannot find reporting on this exact story, reply only: NOT FOUND`;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 120000);
+  try {
+    const r = await fetch(cfg.aiBase + '/responses', {
+      method: 'POST', signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.aiKey },
+      body: JSON.stringify({ model: cfg.aiModel, input: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search' }], max_output_tokens: 2500 }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { console.warn('research failed:', r.status, d.error?.message || ''); return null; }
+    const text = (d.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('\n').trim() || String(d.output_text || '').trim();
+    if (!text || /^NOT FOUND/i.test(text)) return null;
+    return text.slice(0, 9000);
+  } catch (e) { console.warn('research error:', String(e.message || e)); return null; }
+  finally { clearTimeout(t); }
 }
 
 export async function generatePost(item, mode, art, { instructions = '' } = {}) {
@@ -73,7 +114,7 @@ export async function generatePost(item, mode, art, { instructions = '' } = {}) 
     isShort ? RULES_SHORT : RULES_LONG,
     '',
     isShort ? 'Examples of real high-performing @EXXAlerts short posts:\n' + SHORT_EXAMPLES.map(s => '- ' + s).join('\n')
-      : 'Real high-performing @EXXAlerts long posts. Match this voice, rhythm and paragraph structure exactly, but never copy their facts, and follow the rules above where an example differs (e.g. exact dates, a city in the headline):\n\n' + LONG_EXAMPLES.join('\n\n---\n\n'),
+      : 'Real @EXXAlerts long posts. Match their voice, rhythm, paragraph count and level of detail exactly. Never copy their facts, and follow the rules above where an example differs (e.g. exact dates, a city in the headline):\n\n' + examplesFor(item).join('\n\n---\n\n'),
     '',
     'MATERIAL:', material(item, art),
     '',
@@ -92,7 +133,8 @@ export async function generatePost(item, mode, art, { instructions = '' } = {}) 
   if (isShort && text.length > 280) {
     text = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `Shorten this to under 260 characters, same style and opener, keep any outlet credit:\n${text}` }], { temperature: 0.4, max_tokens: 200 }), 'short');
   }
-  return { text, overlap, thin: !art?.paragraphs?.length && !item.summary };
+  return { text, overlap, thin: !art?.paragraphs?.length && !item.summary && !art?.coverage?.paragraphs?.length && !art?.research,
+    material: { articleChars: (art?.paragraphs || []).join(' ').length, articleBlocked: !!art?.blocked, coverage: art?.coverage?.url || '', coverageTried: (art?.coverage?.tried || []).map(t => t.src + ': ' + (t.error || (t.status + ' ' + t.chars + ' chars'))), researched: !!art?.research, researchChars: (art?.research || '').length } };
 }
 
 // ---- Local column: AI picks the stories most like what performs on @EXXAlerts ----

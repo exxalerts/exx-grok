@@ -59,7 +59,7 @@ export function parseRss(xml) {
     const desc = strip(tag(b, 'description') || tag(b, 'summary')).slice(0, 500);
     const source = strip(tag(b, 'source'));
     const image = attr(b, 'media:content', 'url') || attr(b, 'media:thumbnail', 'url') || (/<enclosure[^>]+type=["']image/i.test(b) ? attr(b, 'enclosure', 'url') : '');
-    items.push({ title, link, ts, desc, source, image: /\.(mp4|mp3|m3u8)(\?|$)/i.test(image) ? '' : image });
+    items.push({ title, link, ts, desc, source, sourceUrl: attr(b, 'source', 'url'), image: /\.(mp4|mp3|m3u8)(\?|$)/i.test(image) ? '' : image });
   }
   if (!blocks.length) { // Google News sitemap format (<url><loc>, <news:title>, <image:loc>)
     for (const b of xml.match(/<url>[\s\S]*?<\/url>/gi) || []) {
@@ -176,6 +176,75 @@ function metaTag(html, names) {
   }
   return '';
 }
+// ---- Article text extraction ----
+const BROWSER_HEADERS = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9', 'Upgrade-Insecure-Requests': '1', 'Cache-Control': 'no-cache',
+  'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1',
+  'sec-ch-ua': '"Chromium";v="131", "Google Chrome";v="131", "Not_A Brand";v="24"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"Windows"',
+};
+const JUNK = /^\[[A-Z ]+:|cookie|subscribe|newsletter|sign up|sign in|log in|all rights reserved|advertis|javascript|your browser|download (our|the) app|follow us|copyright|terms of (use|service)|privacy policy|email alerts|click here|share this|related:|read more:|watch:|^photo:|getty images|\bAP Photo\b/i;
+const MAX_PARAS = 40, MAX_CHARS = 12000;
+function budget(ps) {
+  const out = []; let n = 0; const seen = new Set();
+  for (const p of ps) {
+    const k = p.toLowerCase().slice(0, 80);
+    if (seen.has(k)) continue; seen.add(k);
+    if (n + p.length > MAX_CHARS || out.length >= MAX_PARAS) break;
+    out.push(p); n += p.length;
+  }
+  return out;
+}
+function ldArticleBody(html) {
+  let best = '', headline = '', date = '';
+  for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    let j; try { j = JSON.parse(m[1].trim()); } catch { continue; }
+    const stack = [j];
+    while (stack.length) {
+      const o = stack.pop();
+      if (!o || typeof o !== 'object') continue;
+      if (Array.isArray(o)) { stack.push(...o); continue; }
+      if (typeof o.articleBody === 'string' && o.articleBody.length > best.length) { best = o.articleBody; headline = o.headline || headline; date = o.datePublished || date; }
+      for (const v of Object.values(o)) if (v && typeof v === 'object') stack.push(v);
+    }
+  }
+  if (!best) return [];
+  const text = unescape(best.replace(/<[^>]+>/g, '\n'));
+  let ps = text.split(/\n+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(x => x.length > 30);
+  if (ps.length <= 2 && text.length > 600) ps = (text.match(/[^.!?]+[.!?]+["”’]?(\s+|$)/g) || [text]).reduce((a, sen) => { const l = a[a.length - 1]; if (l && l.length < 280) a[a.length - 1] = (l + ' ' + sen.trim()).trim(); else a.push(sen.trim()); return a; }, []);
+  return ps.filter(x => !JUNK.test(x));
+}
+function htmlParagraphs(html) {
+  let h = html.replace(/<(script|style|noscript|svg|nav|header|footer|aside|form|figure|figcaption|iframe)[\s\S]*?<\/\1>/gi, ' ');
+  const regions = [
+    /<[^>]+itemprop=["']articleBody["'][^>]*>([\s\S]*)/i,
+    /<[^>]+class=["'][^"']*(article-body|article__body|articleBody|story-body|story__body|entry-content|post-content|article-content|body-text|RichTextStoryBody|article__content|news-content)[^"']*["'][^>]*>([\s\S]*)/i,
+    /<article[\s>]([\s\S]*?)<\/article>/i,
+    /<main[\s>]([\s\S]*?)<\/main>/i,
+  ];
+  for (const re of regions) { const m = h.match(re); if (m) { const part = m[m.length - 1]; if ((part.match(/<p[\s>]/gi) || []).length >= 3) { h = part; break; } } }
+  return [...h.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m => strip(m[1])).filter(p => p.length > 40 && !JUNK.test(p));
+}
+export function extractArticle(html = '') {
+  const ld = ldArticleBody(html), hp = htmlParagraphs(html);
+  const len = a => a.join(' ').length;
+  const useLd = len(ld) >= len(hp) * 0.8 && len(ld) > 200;
+  const paragraphs = budget(useLd ? ld : hp);
+  return { paragraphs, via: useLd ? 'json-ld' : 'html', chars: len(paragraphs) };
+}
+export const textChars = art => (art?.paragraphs || []).join(' ').length;
+
+async function fetchArticle(real) {
+  const r = await get(real, { timeout: 15000, headers: BROWSER_HEADERS });
+  let html = r.data || '', ex = extractArticle(html), finalUrl = r.url || real, status = r.status;
+  // AMP copy if the page is thin and advertises one
+  const amp = (html.match(/<link[^>]+rel=["']amphtml["'][^>]*href=["']([^"']+)["']/i) || html.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["']amphtml["']/i) || [])[1];
+  if (ex.chars < 800 && amp) {
+    try { const a = await get(new URL(unescape(amp), finalUrl).href, { timeout: 12000, headers: BROWSER_HEADERS }); const ea = extractArticle(a.data || ''); if (ea.chars > ex.chars) ex = { ...ea, via: 'amp' }; } catch { /* ignore */ }
+  }
+  return { ok: r.ok, status, finalUrl, html, ex };
+}
+
 export async function articleMeta(url) {
   const c = meta.get(url);
   if (c && Date.now() - c.t < 6 * 3600e3) return c.data;
@@ -189,16 +258,50 @@ export async function articleMeta(url) {
     return data;
   }
   try {
-    const r = await get(real, { timeout: 15000 });
-    if (!r.ok) { data.blocked = true; data.status = r.status; }
-    const html = r.data || '';
-    let image = metaTag(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src']);
-    if (image && image.startsWith('/')) image = new URL(image, r.url || real).href;
-    const ps = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m => strip(m[1]))
-      .filter(p => p.length > 50 && !/cookie|subscribe|newsletter|sign up|all rights reserved|advertis|javascript/i.test(p));
-    data = { ...data, url: r.url || real, image, description: metaTag(html, ['og:description', 'description', 'twitter:description']), paragraphs: ps.slice(0, 14) };
+    const { ok, status, finalUrl, html, ex } = await fetchArticle(real);
+    if (!ok) { data.blocked = true; data.status = status; }
+    let image = ok ? metaTag(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src']) : '';
+    if (image && image.startsWith('/')) image = new URL(image, finalUrl).href;
+    data = { ...data, url: finalUrl, image, description: ok ? metaTag(html, ['og:description', 'description', 'twitter:description']) : '', paragraphs: ok ? ex.paragraphs : [], via: ex.via };
   } catch (e) { data.blocked = true; data.error = String(e.message || e); }
   meta.set(url, { t: Date.now(), data });
   if (meta.size > 1500) meta.delete(meta.keys().next().value);
   return data;
+}
+
+// ---- Other outlets' coverage of the same story (used when the original page is blocked or thin) ----
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+const STOP = new Set('a an the of to in on at for and or but with by from as is are was were be been who whom that this after before over into his her their its he she they it says said say new video police man woman'.split(' '));
+export async function findCoverage(title, { exclude = '', want = 900, tries = 4 } = {}) {
+  const clean = title.replace(/["“”‘’']/g, '').replace(/\s+/g, ' ').trim();
+  const words = clean.split(' ');
+  const keys = words.filter(w => !STOP.has(w.toLowerCase().replace(/[^a-z0-9]/gi, '')));
+  const queries = [...new Set([words.slice(0, 16).join(' ') + ' when:7d', keys.slice(0, 8).join(' '), keys.slice(0, 5).join(' ')])];
+  const ex = hostOf(exclude);
+  const sig = keys.slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2);
+  const seen = new Set(), items = [];
+  for (const q of queries) {
+    try {
+      const r = await get('https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=en-US&gl=US&ceid=US:en', { timeout: 10000 });
+      for (const i of parseRss(r.data || '')) {
+        const h = hostOf(i.sourceUrl) || i.source;
+        const tw = new Set(i.title.toLowerCase().replace(/["“”‘’']/g, '').split(/[^a-z0-9]+/));
+        const hit = sig.filter(w => tw.has(w)).length / (sig.length || 1);
+        if ((ex && h === ex) || seen.has(h) || hit < 0.5 || Date.now() - i.ts > 365 * 864e5) continue;
+        seen.add(h); items.push(i);
+      }
+    } catch (e) { console.warn("coverage search failed:", String(e.message || e)); }
+    if (items.length >= tries) break;
+  }
+  const tried = [];
+  for (const i of items.slice(0, tries)) {
+    let real;
+    try { real = await decodeGoogleNews(i.link); } catch (e) { tried.push({ src: i.source, error: 'decode: ' + String(e.message || e).slice(0, 80) }); continue; }
+    try {
+      const f = await fetchArticle(real);
+      tried.push({ src: i.source, url: f.finalUrl, status: f.status, chars: f.ex.chars });
+      if (f.ok && f.ex.chars >= want) return { url: f.finalUrl, src: i.source, date: new Date(i.ts).toISOString().slice(0, 10), title: i.title, paragraphs: f.ex.paragraphs, tried };
+    } catch (e) { tried.push({ src: i.source, url: real, error: String(e.message || e).slice(0, 80) }); }
+  }
+  return { url: '', paragraphs: [], tried };
 }
