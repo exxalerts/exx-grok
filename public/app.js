@@ -10,7 +10,7 @@ const SRC_RGB = {
 const TONE = { nat: '37 99 235', loc: '22 163 74', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
 const NAT_SOURCES = ['All', 'Fox News', 'CNN', 'ABC News', 'NBC News', 'The Independent', 'Axios', 'The Hill', 'Associated Press'];
 
-const S = { status: null, feeds: null, q: '', natSrc: 'All', drafts: new Map(), cards: new Map(), sel: null, lastUpdated: 0 };
+const S = { posted: {}, status: null, feeds: null, q: '', natSrc: 'All', drafts: new Map(), cards: new Map(), sel: null, lastUpdated: 0 };
 window.__exx = S; // handy for debugging in DevTools
 
 // ---------- helpers ----------
@@ -109,7 +109,8 @@ function buildTrendRow(it) {
       h('span', { class: 'meta muted small', title: meta }, meta),
       h('a', { class: 'trend-view', href: it.url, target: '_blank', rel: 'noreferrer' }, 'View'),
       h('button', { class: 'btn btn-tone gen-short', title: 'Generate short post', onclick: () => generate(it.id, 'short') }, 'Short'),
-      h('button', { class: 'btn btn-tone gen-long', title: 'Generate long post', onclick: () => generate(it.id, 'long') }, 'Long')),
+      h('button', { class: 'btn btn-tone gen-long', title: 'Generate long post', onclick: () => generate(it.id, 'long') }, 'Long'),
+      postedBtn(it)),
     h('div', { class: 'editor', hidden: true }));
   return el;
 }
@@ -221,10 +222,50 @@ function buildCard(it, col) {
     h('div', { class: 'links' }, h('a', { href: it.url, target: '_blank', rel: 'noreferrer' }, isX ? 'Open on X ↗' : 'Open source ↗')),
     h('div', { class: 'actions' },
       h('button', { class: 'btn btn-tone gen-short', onclick: () => generate(it.id, 'short') }, 'Generate short post'),
-      h('button', { class: 'btn btn-tone gen-long', onclick: () => generate(it.id, 'long') }, 'Generate long post')),
+      h('button', { class: 'btn btn-tone gen-long', onclick: () => generate(it.id, 'long') }, 'Generate long post'),
+      postedBtn(it)),
     h('div', { class: 'editor', hidden: true }));
   if (!isX) io.observe(el);
   return el;
+}
+
+// ---------- shared "Posted" marks (so coworkers don't post the same story) ----------
+const normTitle = t => String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+function markOf(it) {
+  if (S.posted[it.id]) return S.posted[it.id];
+  const n = normTitle(it.title);
+  return n ? Object.values(S.posted).find(m => normTitle(m.title) === n) || null : null;
+}
+function paintPosted(btn, it) {
+  const m = markOf(it);
+  btn.classList.toggle('on', !!m);
+  btn.setAttribute('aria-pressed', m ? 'true' : 'false');
+  btn.textContent = m ? 'Posted ✓' : 'Posted';
+  btn.title = m ? `Marked posted at ${new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${new Date(m.at).toDateString() === new Date().toDateString() ? '' : ' on ' + new Date(m.at).toLocaleDateString()}. Click to unmark.` : 'Mark as posted so coworkers know it is taken';
+}
+function postedBtn(it) {
+  const b = h('button', { class: 'btn posted-btn', type: 'button', onclick: e => { e.stopPropagation(); togglePosted(it.id); } }, 'Posted');
+  paintPosted(b, it);
+  return b;
+}
+function paintAllPosted() {
+  for (const c of S.cards.values()) c.el?.querySelectorAll('.posted-btn').forEach(b => paintPosted(b, c.item));
+}
+async function loadPosted() {
+  try { const r = await api('/api/posted'); S.posted = r.marks || {}; paintAllPosted(); } catch { /* keep the last copy */ }
+}
+async function togglePosted(id) {
+  const c = S.cards.get(id); if (!c) return;
+  const m = markOf(c.item);
+  const ids = m ? Object.entries(S.posted).filter(([k, v]) => k === id || (normTitle(v.title) && normTitle(v.title) === normTitle(c.item.title))).map(([k]) => k) : [id];
+  const prev = S.posted;
+  S.posted = { ...S.posted };
+  if (m) ids.forEach(k => delete S.posted[k]); else S.posted[id] = { at: Date.now(), title: c.item.title };
+  paintAllPosted();
+  try {
+    for (const k of ids) await api('/api/posted', { method: 'POST', body: { id: k, posted: !m, title: c.item.title } });
+    await loadPosted();
+  } catch (e) { S.posted = prev; paintAllPosted(); toast('Could not save Posted: ' + e.message); }
 }
 
 // ---------- drafts ----------
@@ -347,6 +388,7 @@ async function loadFeeds() {
   if (changed || !S.lastUpdated) { renderTrending(); renderTop(); renderColumns(); }
   S.lastUpdated = Math.max(f.updated.news || 0, f.updated.x || 0, f.updated.trends || 0);
   renderUpdated();
+  paintAllPosted();
 }
 function renderUpdated() {
   if (!S.feeds) return;
@@ -364,7 +406,7 @@ async function refreshNow() {
   b.classList.add('spinning'); b.disabled = true; b.setAttribute('aria-busy', 'true');
   if (label) label.textContent = 'Refreshing…';
   $('#updated').textContent = 'Refreshing all feeds…';
-  try { await api('/api/refresh?force=1', { method: 'POST' }); S.feeds = null; await loadFeeds(); toast('All feeds refreshed'); }
+  try { await api('/api/refresh?force=1', { method: 'POST' }); S.feeds = null; await loadFeeds(); await loadPosted(); toast('All feeds refreshed'); }
   catch (e) { toast('Refresh failed: ' + e.message); renderUpdated(); }
   finally { b.classList.remove('spinning'); b.disabled = false; b.removeAttribute('aria-busy'); if (label) label.textContent = 'Refresh'; }
 }
@@ -423,6 +465,8 @@ async function boot() {
   try { await loadFeeds(); } catch (e) { toast('Could not load stories: ' + e.message); }
   if (new URLSearchParams(location.search).has('refresh')) refreshNow();
   setInterval(() => loadFeeds().catch(() => {}), 60e3); // server refreshes every N min; we pick it up
+  loadPosted(); setInterval(loadPosted, 30e3); // coworkers' Posted marks
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadPosted(); });
   setInterval(renderUpdated, 30e3);
 }
 boot();

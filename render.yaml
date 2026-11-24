@@ -24,6 +24,8 @@ services:
         value: grok-4.3
       - key: X_BEARER_TOKEN
         sync: false
+      - key: REDIS_URL # internal URL of the free Key Value 'exx-grok-marks' (shared Posted marks)
+        value: redis://red-dc2t4897lnhs73fdhotg:6379
       - key: X_USERNAME
         value: EXXAlerts
       - key: X_FEED_ACCOUNTS

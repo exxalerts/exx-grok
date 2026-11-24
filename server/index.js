@@ -11,6 +11,7 @@ import * as AI from './ai.js';
 import { TOP_SNAPSHOT } from './snapshot.js';
 import * as Trends from './trends.js';
 import * as Auth from './auth.js';
+import * as Marks from './marks.js';
 
 const PUBLIC = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data');
@@ -196,6 +197,14 @@ async function route(req, res) {
       if (!state.updated.trends) await refreshTrends();
       return json(res, 200, { trending: state.trending, trendError: state.trendError, updated: state.updated.trends });
     }
+    // Shared "Posted" marks (everyone behind the password sees the same ones)
+    if (p === '/api/posted' && req.method === 'GET') return json(res, 200, { marks: await Marks.list(), backend: Marks.backend() });
+    if (p === '/api/posted' && req.method === 'POST') {
+      const { id, posted, title } = await readJson(req);
+      if (!id || typeof id !== 'string') return json(res, 400, { error: 'bad request' });
+      try { const mark = await Marks.set(id, !!posted, title); return json(res, 200, { id, posted: !!mark, mark }); }
+      catch (e) { return json(res, 502, { error: 'Could not save the mark: ' + e.message }); }
+    }
     if (p === '/api/refresh' && req.method === 'POST') { await refreshAll(true); return json(res, 200, { ok: true, updated: state.updated }); }
 
     if (p === '/api/meta') {
@@ -321,6 +330,7 @@ server.listen(cfg.port, cfg.host, () => {
   }
   for (const n of setupNotices()) console.log('  ' + (n.level === 'warn' ? '! ' : '- ') + n.text);
   console.log('');
+  Marks.init(DATA).catch(e => log('posted marks init failed', e.message));
   refreshAll(true).catch(e => log('first refresh failed', e));
 });
 server.on('error', e => { console.error(e.code === 'EADDRINUSE' ? `Port ${cfg.port} is already in use. Change PORT in .env or close the other copy of the app.` : e); process.exit(1); });

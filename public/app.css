@@ -188,3 +188,10 @@ h2 { font-size: 17px; margin: 0; } h3 { margin: 0 0 6px; font-size: 17px; } h4 {
 :root, :root:root { color-scheme: dark; --bg: #000000; --card: #16181c; --text: #e7e9ea; --text2: #b0b5ba; --text3: #8b9196; --line: #2f3336; --bar: #000000; --shadow: 0 2px 12px rgb(0 0 0 / .6); }
 html, body { background: #000; }
 .topbar, header { border-bottom: 1px solid #2f3336; }
+
+/* Shared Posted toggle: grey until someone marks the story posted, then green */
+.posted-btn { background: #2a2f37; border-color: #444b55; color: #b7c0cc; }
+.posted-btn:hover { background: #343a44; }
+.posted-btn.on { background: #16a34a; border-color: #22c55e; color: #fff; }
+.posted-btn.on:hover { background: #15803d; }
+.trend-line .posted-btn { padding: 2px 8px; font-size: 11px; }
