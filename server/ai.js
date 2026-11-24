@@ -57,6 +57,19 @@ const MON_ABBR = { 'Jan.': 'January', 'Feb.': 'February', 'Aug.': 'August', 'Sep
 function outsideQuotes(t, fn) {
   return t.split(/(“[^”]*”|"[^"\n]*")/).map((part, i) => i % 2 ? part : fn(part)).join('');
 }
+// Drop a body paragraph that mostly repeats another one (e.g. a paraphrase right before the same words in quotes).
+const sig = p => new Set(p.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 3));
+function dedupe(body) {
+  const keep = body.map(() => true);
+  for (let i = 0; i < body.length; i++) for (let j = i + 1; j < body.length; j++) {
+    if (!keep[i] || !keep[j]) continue;
+    const a = sig(body[i]), b = sig(body[j]); const small = Math.min(a.size, b.size);
+    if (small < 6) continue;
+    const shared = [...a].filter(w => b.has(w)).length;
+    if (shared / small >= 0.6) { const qi = /["“]/.test(body[i]), qj = /["“]/.test(body[j]); keep[qi && !qj ? j : i] = false; }
+  }
+  return body.filter((_, k) => keep[k]);
+}
 export function polish(t, mode) {
   const fix = x => {
     // Numerals for numbers ("3 children", "5 men"); not "one", which reads oddly as "1 of his computers".
@@ -64,6 +77,7 @@ export function polish(t, mode) {
     x = x.replace(/\b(\d+)-year-old\b/g, '$1-year-old');
     // Vague dates and no clock times.
     for (const [a, b] of Object.entries(MON_ABBR)) x = x.split(a + ' ').join(b + ' ');
+    x = x.replace(new RegExp(`\\b([Oo])n the (?:morning|afternoon|evening|night) of (${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?(,? \\d{4})?`, 'g'), (m, o, mo, y) => `${o === 'O' ? 'I' : 'i'}n ${mo}${y ? ' ' + y.replace(/^,? /, '') : ''}`);
     x = x.replace(new RegExp(`\\b([Oo])n (?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),? )?(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?,? (\\d{4})`, 'g'), (m, o, mo, y) => `${o === 'O' ? 'I' : 'i'}n ${mo} ${y}`);
     x = x.replace(new RegExp(`\\b([Oo])n (?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),? )?(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), (m, o, mo) => `${o === 'O' ? 'I' : 'i'}n ${mo}`);
     x = x.replace(new RegExp(`\\b(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?, (\\d{4})`, 'g'), '$1 $2').replace(new RegExp(`\\b(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), '$1');
@@ -85,7 +99,7 @@ export function polish(t, mode) {
       const parts = /["“”]/.test(p) ? [p] : p.split(/(?<=[a-z0-9)]\.)\s+(?=[A-Z0-9])/);
       if (parts.length > 1 && parts.every(x => x.length > 40) && out.length + body.length + parts.length <= 9) body.push(...parts); else body.push(p);
     }
-    out = [out[0], ...body];
+    out = [out[0], ...dedupe(body)];
   }
   return out.join(mode === 'short' ? ' ' : '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
 }
