@@ -120,10 +120,11 @@ export async function fetchLocalCandidates({ hours = 3 } = {}) {
         if (seen.has(key)) continue;
         seen.add(key);
         const score = (LOCAL_HOOK.test(title) ? 2 : 0) + (PLACE.test(title) ? 1 : 0) + (/video|bodycam|911/i.test(title) ? 2 : 0);
-        rows.push({ id: idOf(src, i.link), kind: 'local', src, title, summary: '', url: i.link, ts: i.ts, image: '', score });
+        rows.push({ id: idOf(src, i.link), kind: 'local', src, srcUrl: i.sourceUrl || '', title, summary: '', url: i.link, ts: i.ts, image: '', score });
       }
     } catch { /* one search failing is fine */ }
   }));
+  await attachBingPhotos(rows).catch(() => {});
   return rows.sort((a, b) => b.ts - a.ts);
 }
 
@@ -173,6 +174,13 @@ function metaTag(html, names) {
     const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${n}["']`, 'i');
     const m = html.match(re1) || html.match(re2);
     if (m) return unescape(m[1]).trim();
+  }
+  return '';
+}
+function ldImage(html) { // JSON-LD "image" of a NewsArticle, used when a page has no og:image
+  for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    const im = m[1].match(/"image"\s*:\s*(?:\[\s*)?(?:\{[^}]*?"url"\s*:\s*)?"(https?:[^"]+)"/);
+    if (im) return im[1].replace(/\\\//g, '/');
   }
   return '';
 }
@@ -245,7 +253,142 @@ async function fetchArticle(real) {
   return { ok: r.ok, status, finalUrl, html, ex };
 }
 
-export async function articleMeta(url, { fresh = false } = {}) {
+// ---- Fallback when Google News links can't be decoded (Google rate-limits cloud servers like Render) ----
+// Bing News RSS lists the same stories with the publisher's own URL and a lead-photo thumbnail.
+const bingCache = new Map();
+const tokens = t => new Set(String(t).toLowerCase().replace(/&[a-z#0-9]+;/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 2));
+const normSrc = s => String(s || '').toLowerCase().replace(/\bon msn\b/, '').replace(/[^a-z0-9]+/g, '');
+let bActive = 0; const bQueue = [];
+async function bSlot(fn) {
+  if (bActive >= 3) await new Promise(r => bQueue.push(r));
+  bActive++;
+  try { return await fn(); } finally { bActive--; const n = bQueue.shift(); if (n) n(); }
+}
+// Google News links can't be opened from Render (rate-limited), so Local cards had no photos. Run the same searches
+// on Bing News, whose results carry the lead photo and the publisher's URL, and attach them to matching stories.
+async function bingItems(q) {
+  const r = await bSlot(() => get('https://www.bing.com/news/search?q=' + encodeURIComponent(q) + '&format=rss&mkt=en-US&qft=sortbydate%3d%221%22', { timeout: 10000 }));
+  const out = [];
+  for (const b of (r.data || '').match(/<item>[\s\S]*?<\/item>/gi) || []) {
+    const t = strip(tag(b, 'title')), link = unescape(strip(tag(b, 'link')));
+    let real = ''; try { real = new URL(link).searchParams.get('url') || link; } catch { continue; }
+    out.push({ title: t, tt: tokens(t), url: real, image: unescape(strip(tag(b, 'News:Image'))), source: strip(tag(b, 'News:Source')) });
+  }
+  return out;
+}
+const bigThumb = u => u ? u.replace(/^http:/, 'https:').replace(/&pid=News$/, '') + '&w=700&h=394&c=7&pid=News' : '';
+function bestMatch(title, src, pool, min = 0.6) {
+  const want = tokens(title), ws = normSrc(src);
+  let best = null;
+  for (const b of pool) {
+    const hit = [...want].filter(w => b.tt.has(w)).length / (want.size || 1);
+    const ns = normSrc(b.source);
+    const same = !!ws && (ns === ws || ns.includes(ws) || ws.includes(ns) || hostOf(b.url).replace(/\./g, '').includes(ws));
+    const score = hit + (same ? 0.3 : 0) + (b.image ? 0.05 : 0);
+    if (hit >= min && (!best || score > best.score)) best = { ...b, score, same };
+  }
+  return best;
+}
+async function attachBingPhotos(rows) {
+  const pool = (await Promise.all(LOCAL_QUERIES.map(q => bingItems(q).catch(() => [])))).flat();
+  for (const r of rows) {
+    const b = bestMatch(r.title, r.src, pool);
+    if (!b) continue;
+    if (b.image) r.image = bigThumb(b.image);
+    if (b.same && !/msn\.com/.test(b.url)) r.pubUrl = b.url;
+  }
+}
+
+// The outlet's own RSS feed usually still lists a story from the last few hours, with its real URL and often its photo.
+const siteFeeds = new Map(); // host -> { t, urls }
+const feedCache = new Map(); // feed url -> { t, items }
+async function feedsOf(home) {
+  const c = siteFeeds.get(home);
+  if (c && Date.now() - c.t < 24 * 3600e3) return c.urls;
+  const urls = [];
+  try {
+    const h = await get(home, { timeout: 8000, headers: BROWSER_HEADERS });
+    for (const m of (h.data || '').matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)) {
+      const u = (m[0].match(/href=["']([^"']+)["']/) || [])[1];
+      if (u) { try { urls.push(new URL(unescape(u), home).href); } catch { /* skip */ } }
+    }
+  } catch { /* homepage blocked */ }
+  const base = home.replace(/\/$/, '');
+  urls.push(base + '/feed', base + '/rss', base + '/arc/outboundfeeds/rss/?outputType=xml', base + '/feeds/syndication/rss/news');
+  const out = [...new Set(urls)].slice(0, 6);
+  siteFeeds.set(home, { t: Date.now(), urls: out });
+  return out;
+}
+async function feedItems(u) {
+  const c = feedCache.get(u);
+  if (c && Date.now() - c.t < 10 * 60e3) return c.items;
+  let items = [];
+  try { const r = await get(u, { timeout: 8000, headers: BROWSER_HEADERS }); if (r.ok) items = parseRss(r.data || ''); } catch { /* none */ }
+  feedCache.set(u, { t: Date.now(), items });
+  if (feedCache.size > 500) feedCache.delete(feedCache.keys().next().value);
+  return items;
+}
+async function fromSiteFeed(item) {
+  if (!item.srcUrl || /news\.google|yahoo|msn|youtube|facebook|reddit/.test(item.srcUrl)) return null;
+  const want = tokens(item.title);
+  for (const f of await feedsOf(item.srcUrl)) {
+    for (const x of await feedItems(f)) {
+      const tt = tokens(x.title);
+      if ([...want].filter(w => tt.has(w)).length / (want.size || 1) >= 0.7) return { url: x.link, image: x.image || '' };
+    }
+  }
+  return null;
+}
+async function sourceUrlOf(item) { // older saved stories don't carry the outlet's home page; ask Google News RSS search (works from Render)
+  try {
+    const r = await get('https://news.google.com/rss/search?q=' + encodeURIComponent('"' + item.title.slice(0, 100) + '"') + '&hl=en-US&gl=US&ceid=US:en', { timeout: 8000 });
+    const its = parseRss(r.data || '');
+    return (its.find(i => i.title.startsWith(item.title.slice(0, 40))) || its[0] || {}).sourceUrl || '';
+  } catch { return ''; }
+}
+let eActive = 0; const eQueue = [];
+async function eSlot(fn) {
+  if (eActive >= 3) await new Promise(r => eQueue.push(r));
+  eActive++;
+  try { return await fn(); } finally { eActive--; const n = eQueue.shift(); if (n) n(); }
+}
+// Find a lead photo (and the publisher URL) for Local stories: Bing News match, then the outlet's own feed,
+// then the article page's og:image, then a per-story Bing lookup. Results are saved on the item.
+export async function enrichLocal(items) {
+  await Promise.all(items.map(it => eSlot(async () => {
+    if (it.image) return;
+    it.enriched = Date.now();
+    try {
+      if (!it.srcUrl) it.srcUrl = await sourceUrlOf(it);
+      if (!it.pubUrl) { const f = await fromSiteFeed(it).catch(() => null); if (f) { it.pubUrl = f.url; if (!it.image && f.image) it.image = f.image; } }
+      if (!it.image && it.pubUrl) { const m = await articleMeta(it.pubUrl).catch(() => null); if (m?.image) it.image = m.image; if (!it.summary && m?.description) it.summary = m.description.slice(0, 400); }
+      if (!it.image) { const b = await bingLookup(it.title, it.src).catch(() => null); if (b?.image) it.image = b.image; if (!it.pubUrl && b?.same && !/msn\.com/.test(b.url)) it.pubUrl = b.url; }
+    } catch { /* keep going */ }
+  })));
+  return items;
+}
+
+export async function bingLookup(title, src = '') {
+  const key = title + '|' + src;
+  const c = bingCache.get(key);
+  if (c && Date.now() - c.t < 6 * 3600e3) return c.v;
+  const q = String(title).replace(/\s+-\s+[^-]+$/, '').replace(/["“”]/g, '').slice(0, 150);
+  let v = null;
+  try {
+    let b = bestMatch(q, src, await bingItems(q), 0.5);
+    if (!b) { // shorter keyword query
+      const STOPW = new Set('the and for with from after before into over that this his her their are was were has had have says said police man woman'.split(' '));
+      const k = q.split(/\s+/).filter(w => w.length > 2 && !STOPW.has(w.toLowerCase())).slice(0, 7).join(' ');
+      if (k && k !== q) b = bestMatch(q, src, await bingItems(k), 0.5);
+    }
+    if (b) v = { url: b.url, image: bigThumb(b.image), source: b.source, same: b.same, title: b.title };
+  } catch { /* leave null */ }
+  bingCache.set(key, { t: Date.now(), v });
+  if (bingCache.size > 2000) bingCache.delete(bingCache.keys().next().value);
+  return v;
+}
+
+export async function articleMeta(url, { fresh = false, title = '', src = '' } = {}) {
   const c = meta.get(url);
   // fresh: used by Generate. Reuse a cached copy only if it already holds a full article body.
   if (c && Date.now() - c.t < 6 * 3600e3 && (!fresh || (!c.data.blocked && textChars(c.data) >= 1500))) return c.data;
@@ -253,8 +396,14 @@ export async function articleMeta(url, { fresh = false } = {}) {
   let real = url, decodeError = '';
   try { real = await decodeGoogleNews(url); } catch (e) { decodeError = String(e.message || e); }
   let data = { url: real, image: '', description: '', paragraphs: [], blocked: false };
+  if (decodeError && title) { // look the story up elsewhere: the publisher URL if Bing has the same outlet, else just its photo
+    const b = await bingLookup(title, src).catch(() => null);
+    if (b?.same && b.url && !/msn\.com/.test(b.url)) { real = b.url; decodeError = ''; data.fallbackImage = b.image; data.via = 'bing'; }
+    else if (b?.image) data.fallbackImage = b.image;
+  }
   if (decodeError) { // a Google News page only carries Google's own logo, so don't show it as the story photo
-    data = { ...data, blocked: true, decodeError };
+    data = { ...data, blocked: true, decodeError, image: data.fallbackImage || '' };
+    if (data.image) { meta.set(url, { t: Date.now() - 4 * 3600e3, data }); return data; } // keep the photo 2h, retry the article later
     meta.set(url, { t: Date.now() - 6 * 3600e3 + 5 * 60e3, data }); // retry after 5 minutes
     console.warn('google news decode failed:', decodeError);
     return data;
@@ -262,8 +411,10 @@ export async function articleMeta(url, { fresh = false } = {}) {
   try {
     const { ok, status, finalUrl, html, ex } = await fetchArticle(real);
     if (!ok) { data.blocked = true; data.status = status; }
-    let image = ok ? metaTag(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src']) : '';
-    if (image && image.startsWith('/')) image = new URL(image, finalUrl).href;
+    let image = ok ? metaTag(html, ['og:image', 'og:image:secure_url', 'og:image:url', 'twitter:image', 'twitter:image:src']) : '';
+    if (image && !/^https?:/.test(image)) { try { image = new URL(image, finalUrl).href; } catch { image = ''; } }
+    if (!image && ok) image = ldImage(html);
+    if (!image) image = data.fallbackImage || '';
     data = { ...data, url: finalUrl, image, description: ok ? metaTag(html, ['og:description', 'description', 'twitter:description']) : '', paragraphs: ok ? ex.paragraphs : [], via: ex.via };
   } catch (e) { data.blocked = true; data.error = String(e.message || e); }
   meta.set(url, { t: Date.now(), data });

@@ -196,7 +196,7 @@ async function loadPic(el) {
   const it = c.item;
   let src = it.image;
   if (!src) {
-    try { const m = await api('/api/meta?url=' + encodeURIComponent(it.url)); src = m.image; if (m.url) it.realUrl = m.url; if (!it.summary && m.description) { it.summary = m.description; const s = el.querySelector('.sum'); if (s) s.textContent = m.description; } }
+    try { const m = await api('/api/meta?url=' + encodeURIComponent(it.pubUrl || it.url) + '&title=' + encodeURIComponent(it.title || '') + '&src=' + encodeURIComponent(it.src || '')); src = m.image; if (m.url) it.realUrl = m.url; if (!it.summary && m.description) { it.summary = m.description; const s = el.querySelector('.sum'); if (s) s.textContent = m.description; } }
     catch { /* ignore */ }
   }
   const pic = el.querySelector('.pic');

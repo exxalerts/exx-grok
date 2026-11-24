@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { cfg, has, envFileFound, ROOT } from './env.js';
-import { fetchNational, fetchLocalCandidates, articleMeta, findCoverage, textChars, get } from './feeds.js';
+import { fetchNational, fetchLocalCandidates, articleMeta, findCoverage, textChars, get, enrichLocal } from './feeds.js';
 import * as X from './xapi.js';
 import * as AI from './ai.js';
 import { TOP_SNAPSHOT } from './snapshot.js';
@@ -47,6 +47,12 @@ async function refreshNews() {
         .map(c => ({ ...c, why: 'Keyword match: ' + (/video|bodycam|911/i.test(c.title) ? 'footage hook' : 'crime/incident hook') + (/\b(Florida|Texas|California|county|city)\b/i.test(c.title) ? ' + place tag' : '') }));
     }
     state.local = [...picks, ...state.local].sort((a, b) => b.ts - a.ts).slice(0, 40);
+    // Lead photos for Local cards (Google News links can't be opened from Render): new picks first, then older ones not tried in 2h.
+    const needPic = state.local.filter(i => !i.image && (!i.enriched || Date.now() - i.enriched > 2 * 3600e3)).slice(0, 16);
+    if (needPic.length) { // in the background so Refresh stays fast; cards ask /api/meta, which waits for the same work
+      const t1 = Date.now();
+      enrichLocal(needPic).then(() => { fs.writeFileSync(path.join(DATA, 'local.json'), JSON.stringify(state.local)); log(`local photos: ${state.local.filter(i => i.image).length}/${state.local.length} have a photo (${Date.now() - t1} ms)`); }).catch(() => {});
+    }
     fs.writeFileSync(path.join(DATA, 'local.json'), JSON.stringify(state.local));
   } catch (e) { state.localError = 'Local search failed: ' + e.message; }
   state.updated.news = Date.now();
@@ -84,6 +90,7 @@ async function refreshTrends() {
 }
 
 let refreshRun = null;
+const picJobs = new Map(); // local story id -> photo lookup in progress
 async function refreshAll(force = false) {
   // A manual refresh that lands while an automatic one is running waits for it, then forces its own fresh fetch.
   if (refreshRun) { if (!force) return refreshRun; await refreshRun.catch(() => {}); if (refreshRun) return refreshRun; }
@@ -210,7 +217,15 @@ async function route(req, res) {
     if (p === '/api/meta') {
       const u = url.searchParams.get('url') || '';
       if (!/^https?:\/\//.test(u)) return json(res, 400, { error: 'bad url' });
-      const m = await articleMeta(u);
+      const li = state.local.find(i => i.url === u || i.pubUrl === u);
+      if (li) {
+        if (!li.image && (!li.enriched || Date.now() - li.enriched > 2 * 3600e3 || picJobs.has(li.id))) {
+          if (!picJobs.has(li.id)) picJobs.set(li.id, enrichLocal([li]).finally(() => picJobs.delete(li.id)));
+          await picJobs.get(li.id).catch(() => {});
+        }
+        if (li.image) return json(res, 200, { url: li.pubUrl || u, image: li.image, description: li.summary || '' });
+      }
+      const m = await articleMeta(u, { title: (url.searchParams.get('title') || '').slice(0, 300), src: (url.searchParams.get('src') || '').slice(0, 80) });
       return json(res, 200, { url: m.url, image: m.image, description: m.description, blocked: m.blocked, decodeError: m.decodeError || undefined });
     }
 
@@ -235,7 +250,7 @@ async function route(req, res) {
       if (!item?.title || !['short', 'long'].includes(mode)) return json(res, 400, { error: 'bad request' });
       // Read the whole article on demand before writing (short and long). If the page is blocked or thin,
       // fall back to other outlets' coverage of the same story, then to xAI web research.
-      let art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.url, { fresh: true }).catch(() => null);
+      let art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.pubUrl || item.url, { fresh: true, title: item.title, src: item.src }).catch(() => null);
       if (item.kind !== 'trend') {
         art = { ...(art || {}) };
         const need = mode === 'long' ? 1500 : 700;
