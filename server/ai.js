@@ -91,7 +91,7 @@ export function polish(t, mode) {
   let out = paras.map(p => outsideQuotes(p, fix));
   // The headline names only a state or region: "in Beverly Hills, California" -> "in California".
   const st = new RegExp(`\\b(in|at|near|from|of) (?:[A-Z][\\w.'’-]*(?: [A-Z][\\w.'’-]*){0,3}), (${STATES})\\b`, 'g');
-  out[0] = out[0].replace(st, '$1 $2').replace(new RegExp(`(^|: |\\s)(?:[A-Z][\\w.'’-]*(?: [A-Z][\\w.'’-]*){0,2}), (${STATES}) (man|woman|teen|boy|girl|mother|father|police|officer|teacher|deputy|couple|family|student)\\b`, 'g'), '$1$2 $3');
+  out[0] = out[0].replace(st, (m, prep, state) => `${/^(at|near)$/.test(prep) ? 'in' : prep} ${state}`).replace(new RegExp(`(^|: |\\s)(?:[A-Z][\\w.'’-]*(?: [A-Z][\\w.'’-]*){0,2}), (${STATES}) (man|woman|teen|boy|girl|mother|father|police|officer|teacher|deputy|couple|family|student)\\b`, 'g'), '$1$2 $3');
   if (mode !== 'short') {
     // One sentence per paragraph: split a paragraph without quotes that runs 2+ sentences, as long as the post stays at 8 paragraphs or fewer.
     const body = [];
@@ -182,6 +182,7 @@ async function copyedit(text, mode, art) {
 3. The headline (first line) must not contain the age of anyone, the name of an ordinary private person, or a city, county, venue or pier name; replace those with the role ("Man", "Accused wife-killer") or the state or region the post already mentions. KEEP famous public figures by name (politicians, celebrities, their family members, e.g. "Paul Pelosi", "Trump") and KEEP a name that is itself the twist of the story (e.g. someone legally named "Captain America"). If unsure, leave the headline as it is.
 4. Delete any quote that is not in English.
 5. Keep the paragraph breaks (blank lines) exactly.
+6. Remove a repeated place phrase (e.g. "in California ... in California" in the headline).
 Do not add, remove or reorder facts. Output only the post.
 
 POST:
