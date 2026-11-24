@@ -184,7 +184,7 @@ const BROWSER_HEADERS = {
   'sec-ch-ua': '"Chromium";v="131", "Google Chrome";v="131", "Not_A Brand";v="24"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"Windows"',
 };
 const JUNK = /^\[[A-Z ]+:|cookie|subscribe|newsletter|sign up|sign in|log in|all rights reserved|advertis|javascript|your browser|download (our|the) app|follow us|copyright|terms of (use|service)|privacy policy|email alerts|click here|share this|related:|read more:|watch:|^photo:|getty images|\bAP Photo\b/i;
-const MAX_PARAS = 40, MAX_CHARS = 12000;
+const MAX_PARAS = 80, MAX_CHARS = 20000; // whole article, generous budget
 function budget(ps) {
   const out = []; let n = 0; const seen = new Set();
   for (const p of ps) {
@@ -245,9 +245,11 @@ async function fetchArticle(real) {
   return { ok: r.ok, status, finalUrl, html, ex };
 }
 
-export async function articleMeta(url) {
+export async function articleMeta(url, { fresh = false } = {}) {
   const c = meta.get(url);
-  if (c && Date.now() - c.t < 6 * 3600e3) return c.data;
+  // fresh: used by Generate. Reuse a cached copy only if it already holds a full article body.
+  if (c && Date.now() - c.t < 6 * 3600e3 && (!fresh || (!c.data.blocked && textChars(c.data) >= 1500))) return c.data;
+  if (fresh && c?.data?.decodeError) gcache.delete(url);
   let real = url, decodeError = '';
   try { real = await decodeGoogleNews(url); } catch (e) { decodeError = String(e.message || e); }
   let data = { url: real, image: '', description: '', paragraphs: [], blocked: false };

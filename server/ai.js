@@ -103,7 +103,7 @@ Use plain, clinical newsroom wording for sexual or violent crimes (no graphic de
     if (!r.ok) { console.warn('research failed:', r.status, d.error?.message || ''); return null; }
     const text = (d.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('\n').trim() || String(d.output_text || '').trim();
     if (!text || /^NOT FOUND/i.test(text)) return null;
-    return text.slice(0, 9000);
+    return text.slice(0, 12000);
   } catch (e) { console.warn('research error:', String(e.message || e)); return null; }
   finally { clearTimeout(t); }
 }

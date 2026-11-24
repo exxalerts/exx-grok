@@ -221,12 +221,15 @@ async function route(req, res) {
       if (!has.ai) return json(res, 400, { error: 'AI key missing. Add AI_API_KEY to .env and restart the app.', code: 'NO_AI' });
       const { item, mode, instructions } = await readJson(req);
       if (!item?.title || !['short', 'long'].includes(mode)) return json(res, 400, { error: 'bad request' });
-      let art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.url).catch(() => null);
-      if (mode === 'long' && item.kind !== 'trend') { // long posts need the full story: fall back to other coverage, then web research
+      // Read the whole article on demand before writing (short and long). If the page is blocked or thin,
+      // fall back to other outlets' coverage of the same story, then to xAI web research.
+      let art = (item.kind === 'x' || item.kind === 'trend') ? null : await articleMeta(item.url, { fresh: true }).catch(() => null);
+      if (item.kind !== 'trend') {
         art = { ...(art || {}) };
+        const need = mode === 'long' ? 1500 : 700;
         const have = () => textChars(art) + textChars(art.coverage) + (item.kind === 'x' ? (item.title || '').length : 0);
-        if (item.kind !== 'x' && have() < 1500) art.coverage = await findCoverage(item.title, { exclude: art.url || '' }).catch(() => null);
-        if (have() < 1500) art.research = await AI.research(item, [item.summary, art.description, ...(art.paragraphs || []), ...(art.coverage?.paragraphs || [])].filter(Boolean).join('\n')).catch(() => null);
+        if (item.kind !== 'x' && have() < need) art.coverage = await findCoverage(item.title, { exclude: art.url || '' }).catch(() => null);
+        if (have() < need) art.research = await AI.research(item, [item.summary, art.description, ...(art.paragraphs || []), ...(art.coverage?.paragraphs || [])].filter(Boolean).join('\n')).catch(() => null);
       }
       try { return json(res, 200, await AI.generatePost(item, mode, art, { instructions })); }
       catch (e) { return json(res, 502, { error: e.message }); }
