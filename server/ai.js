@@ -97,7 +97,7 @@ export function polish(t, mode) {
     const body = [];
     for (const p of out.slice(1)) {
       const parts = /["“”]/.test(p) ? [p] : p.split(/(?<=[a-z0-9)]\.)\s+(?=[A-Z0-9])/);
-      if (parts.length > 1 && parts.every(x => x.length > 40) && out.length + body.length + parts.length <= 9) body.push(...parts); else body.push(p);
+      if (parts.length > 1 && parts.every(x => x.length > 20) && out.length + body.length + parts.length <= 9) body.push(...parts); else body.push(p);
     }
     out = [out[0], ...dedupe(body)];
   }
@@ -179,7 +179,7 @@ async function copyedit(text, mode, art) {
   const ask = `Copyedit this @EXXAlerts ${mode} post. Change ONLY these things and leave every other word exactly as it is:
 1. Add the Oxford comma in every list of 3 or more items ("cocaine, fentanyl, and a ledger"; "Smith, Jones, and Brown"; "ages 5, 3, and 1").
 2. Numerals for numbers outside quotes ("3 children", "5 men", "1-year-old"), except "one of ...".
-3. The headline (first line) must not contain the name or age of a private person (only famous public figures may be named) or a city, county, venue or pier name; replace those with the role ("Man", "Accused wife-killer") or the state or region the post already mentions.
+3. The headline (first line) must not contain the age of anyone, the name of an ordinary private person, or a city, county, venue or pier name; replace those with the role ("Man", "Accused wife-killer") or the state or region the post already mentions. KEEP famous public figures by name (politicians, celebrities, their family members, e.g. "Paul Pelosi", "Trump") and KEEP a name that is itself the twist of the story (e.g. someone legally named "Captain America"). If unsure, leave the headline as it is.
 4. Delete any quote that is not in English.
 5. Keep the paragraph breaks (blank lines) exactly.
 Do not add, remove or reorder facts. Output only the post.
