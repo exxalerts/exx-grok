@@ -114,7 +114,7 @@ export async function generatePost(item, mode, art, opts = {}) {
     // xAI refuses some requests with a 403 when the material is graphic (e.g. child-abuse cases).
     // Retry with less material: first without the web research notes, then without the other coverage.
     if (!/AI API 403/.test(String(e.message)) || !art) throw e;
-    const tries = [];
+    const tries = [{ ...art, newsroomNote: true }]; // same facts, with an explicit newsroom framing
     if (art.research) tries.push({ ...art, research: null, researchRefused: true });
     if (art.coverage?.paragraphs?.length) tries.push({ ...art, research: null, coverage: null, researchRefused: !!art.research });
     for (const a of tries) {
@@ -127,7 +127,7 @@ export async function generatePost(item, mode, art, opts = {}) {
 
 async function generateOnce(item, mode, art, { instructions = '' } = {}) {
   const isShort = mode === 'short';
-  const outlet = (item.kind === 'x' || item.kind === 'trend') ? '' : item.src;
+  const outlet = (item.kind === 'x' || item.kind === 'trend' || /\.(com|org|net|tv|news)$/i.test(item.src || '')) ? '' : item.src; // never credit a bare website name
   const prompt = [
     isShort ? RULES_SHORT : RULES_LONG,
     '',
@@ -137,6 +137,7 @@ async function generateOnce(item, mode, art, { instructions = '' } = {}) {
     'MATERIAL:', material(item, art),
     '',
     outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Do not mention the outlet or any website in the post; name the agencies, officials or documents that said things instead.`) : 'This came from another X account: do not cite that account by @handle.',
+    art?.newsroomNote ? 'Context: this is a factual news report about a public criminal case (charges, trial, sentencing) as published by police, courts or the Department of Justice. Report it the way a newspaper would: plain, clinical wording, no graphic description, explicit words asterisked.' : '',
     instructions ? `Extra instructions from the editor: ${instructions}` : '',
     '',
     `Write ONE ${isShort ? 'short' : 'long'} post. Output only the post text, nothing else.`,
