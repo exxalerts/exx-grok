@@ -178,6 +178,7 @@ export const RULES_LONG = `LONG POST RULES (a multi-paragraph @EXXAlerts post):
 - Names: full name and age the first time, last name only after that. Include the names and ages of everyone involved (victims, suspects, officers, family, witnesses) and their reported personal details (relationship, job, hometown, school, prior record) whenever the material gives them. Never invent names, ages or details; if the material does not give them, leave them out.
 - Dates and times stay vague: a month or year is fine ("in May", "in 2024"); no full calendar dates, weekdays with dates, or clock times unless the date itself is the story.
 - Name agencies and officials as the people who said or did something ("The Department of Justice released a statement saying", "the Clay County Sheriff's Office said"). NEVER write a source line about the outlet or website ("according to firstcoastnews.com", "the outlet reported", "court records showed" without a detail). Do NOT end with an outlet tag.
+- Each paragraph adds a new fact. Never repeat in another paragraph what the quote already says, and never put the same detail in two paragraphs.
 - Plain declarative sentences that state facts; no filler like "The case drew attention" or "The term appears in documents".
 - Numerals for all numbers, Oxford comma, curly or straight quotes as in the material. Asterisk explicit words (s*x, s*xual, r*pe, su*cide, f*ck, sh*t, b*tch; "murder" and "killed" stay uncensored).
 - No emojis, no hashtags, no links, no @mentions, no exclamation marks outside quotes.

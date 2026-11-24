@@ -78,6 +78,10 @@ function examplesFor(item) {
 
 // ---- Web research (xAI Responses API + web_search) for stories whose article can't be read ----
 export async function research(item, known = '') {
+  const first = await researchOnce(item, known);
+  return first ?? researchOnce(item, known); // one retry: the search agent sometimes errors or refuses on crime stories
+}
+async function researchOnce(item, known = '') {
   if (!has.ai || !/x\.ai/.test(cfg.aiBase)) return null;
   const prompt = `Find the news reporting about this specific story and return a fact sheet for a reporter.
 Headline: ${item.title}
