@@ -167,10 +167,32 @@ Use plain, clinical newsroom wording for sexual or violent crimes (no graphic de
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { console.warn('research failed:', r.status, d.error?.message || ''); return null; }
     const text = (d.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('\n').trim() || String(d.output_text || '').trim();
-    if (!text || /^NOT FOUND/i.test(text)) return null;
+    if (!text || /^NOT FOUND/i.test(text) || text.length < 200) return null;
     return text.slice(0, 12000);
   } catch (e) { console.warn('research error:', String(e.message || e)); return null; }
   finally { clearTimeout(t); }
+}
+
+// A last mechanical copyedit in the account's house style. The facts and wording must survive it, or it is thrown away.
+const wordList = t => t.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+async function copyedit(text, mode, art) {
+  const ask = `Copyedit this @EXXAlerts ${mode} post. Change ONLY these things and leave every other word exactly as it is:
+1. Add the Oxford comma in every list of 3 or more items ("cocaine, fentanyl, and a ledger"; "Smith, Jones, and Brown"; "ages 5, 3, and 1").
+2. Numerals for numbers outside quotes ("3 children", "5 men", "1-year-old"), except "one of ...".
+3. The headline (first line) must not contain the name or age of a private person (only famous public figures may be named) or a city, county, venue or pier name; replace those with the role ("Man", "Accused wife-killer") or the state or region the post already mentions.
+4. Delete any quote that is not in English.
+5. Keep the paragraph breaks (blank lines) exactly.
+Do not add, remove or reorder facts. Output only the post.
+
+POST:
+${text}`;
+  try {
+    const out = cleanPost(await chat([{ role: 'user', content: ask }], { temperature: 0.1, max_tokens: 1200 }), mode);
+    const a = wordList(text), b = wordList(out), A = new Set(a);
+    const kept = b.filter(w => A.has(w) || /^\d+$/.test(w)).length / (b.length || 1);
+    if (out.length > text.length * 0.6 && out.length < text.length * 1.08 && kept > 0.93 && /^(ALERT|NEW|BREAKING|UPDATE):/.test(out)) return out;
+  } catch { /* keep the draft */ }
+  return text;
 }
 
 export async function generatePost(item, mode, art, opts = {}) {
@@ -214,11 +236,12 @@ async function generateOnce(item, mode, art, { instructions = '' } = {}) {
     text = await run(`\n\nYour previous attempt reused ${overlap} consecutive words from the headline: "${text}". Rewrite with a completely different hook and different wording.`);
     overlap = headlineOverlap(isShort ? text : text.split('\n')[0], item.title);
   }
-  if (!isShort && (text.length > 1000 || text.split('\n\n').length > 7)) {
+  if (!isShort && (text.length > 950 || text.split('\n\n').length > 7)) {
     // Real @EXXAlerts long posts run ~550-850 characters; cut the case-file detail, keep the story.
     const tight = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `${RULES_LONG}\n\nThis draft is too long (${text.length} characters, ${text.split('\n\n').length} paragraphs). Rewrite it to about 650-850 characters: the SAME headline word for word, then 4-5 body paragraphs of ONE sentence each. Keep the names and ages, the most vivid details, the single best quote word for word, and the outcome as the last line. Drop procedural detail (charge counts, statutes, addresses, fines, extra agencies, extra quotes). Do not add any fact that is not in the draft. Output only the post.\n\nDRAFT:\n${text}` }], { temperature: 0.4, max_tokens: 900 }), mode);
     if (tight.length >= 300 && tight.length < text.length) text = tight.split('\n\n')[0] === text.split('\n\n')[0] ? tight : [text.split('\n\n')[0], ...tight.split('\n\n').slice(1)].join('\n\n');
   }
+  text = await copyedit(text, mode, art);
   if (isShort && text.length > 280) {
     text = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `Shorten this to under 260 characters, same style and opener, keep any outlet credit:\n${text}` }], { temperature: 0.4, max_tokens: 200 }), 'short');
   }
