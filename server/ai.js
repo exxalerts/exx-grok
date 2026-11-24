@@ -89,7 +89,8 @@ Return plain text only:
 - Direct quotes copied word for word, each with who said it and where.
 - Keep dates as they appear in the sources.
 - Last line: "Sources:" followed by the URLs you used.
-Only include facts the sources state about this exact case. No commentary, no guessing. If you cannot find reporting on this exact story, reply only: NOT FOUND`;
+Only include facts the sources state about this exact case. No commentary, no guessing.
+Use plain, clinical newsroom wording for sexual or violent crimes (no graphic description; write s*x, s*xual, r*pe with an asterisk). If you cannot find reporting on this exact story, reply only: NOT FOUND`;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 120000);
   try {
@@ -107,7 +108,24 @@ Only include facts the sources state about this exact case. No commentary, no gu
   finally { clearTimeout(t); }
 }
 
-export async function generatePost(item, mode, art, { instructions = '' } = {}) {
+export async function generatePost(item, mode, art, opts = {}) {
+  try { return await generateOnce(item, mode, art, opts); }
+  catch (e) {
+    // xAI refuses some requests with a 403 when the material is graphic (e.g. child-abuse cases).
+    // Retry with less material: first without the web research notes, then without the other coverage.
+    if (!/AI API 403/.test(String(e.message)) || !art) throw e;
+    const tries = [];
+    if (art.research) tries.push({ ...art, research: null, researchRefused: true });
+    if (art.coverage?.paragraphs?.length) tries.push({ ...art, research: null, coverage: null, researchRefused: !!art.research });
+    for (const a of tries) {
+      try { const r = await generateOnce(item, mode, a, opts); r.material.retriedAfterRefusal = true; return r; }
+      catch (e2) { if (!/AI API 403/.test(String(e2.message))) throw e2; }
+    }
+    throw e;
+  }
+}
+
+async function generateOnce(item, mode, art, { instructions = '' } = {}) {
   const isShort = mode === 'short';
   const outlet = (item.kind === 'x' || item.kind === 'trend') ? '' : item.src;
   const prompt = [
@@ -118,7 +136,7 @@ export async function generatePost(item, mode, art, { instructions = '' } = {}) 
     '',
     'MATERIAL:', material(item, art),
     '',
-    outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Credit it inside the body only if useful ("according to ${outlet}"); never add an outlet tag at the end.`) : 'This came from another X account: do not cite that account by @handle.',
+    outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Do not mention the outlet or any website in the post; name the agencies, officials or documents that said things instead.`) : 'This came from another X account: do not cite that account by @handle.',
     instructions ? `Extra instructions from the editor: ${instructions}` : '',
     '',
     `Write ONE ${isShort ? 'short' : 'long'} post. Output only the post text, nothing else.`,
