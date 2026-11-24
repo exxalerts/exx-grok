@@ -136,7 +136,7 @@ async function generateOnce(item, mode, art, { instructions = '' } = {}) {
     '',
     'MATERIAL:', material(item, art),
     '',
-    outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Do not mention the outlet or any website in the post; name the agencies, officials or documents that said things instead.`) : 'This came from another X account: do not cite that account by @handle.',
+    outlet ? (isShort ? `Source outlet (credit it at the end only if the claim is surprising or exclusive): ${outlet}` : `Source outlet: ${outlet}. Do not mention the outlet or any website in the post; name the agencies, officials or documents that said things instead.`) : (item.kind === 'x' ? 'This came from another X account: do not cite that account by @handle.' : 'Do not credit any outlet or website.'),
     art?.newsroomNote ? 'Context: this is a factual news report about a public criminal case (charges, trial, sentencing) as published by police, courts or the Department of Justice. Report it the way a newspaper would: plain, clinical wording, no graphic description, explicit words asterisked.' : '',
     instructions ? `Extra instructions from the editor: ${instructions}` : '',
     '',
