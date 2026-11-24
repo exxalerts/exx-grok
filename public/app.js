@@ -20,7 +20,7 @@ export async function api(path, { method = 'GET', body, headers = {}, raw = fals
     if (body instanceof Blob || body instanceof ArrayBuffer) opts.body = body;
     else { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
   }
-  const r = await fetch(path, { ...opts, credentials: 'same-origin', redirect: 'follow' });
+  const r = await fetch(path, { ...opts, cache: 'no-store', credentials: 'same-origin', redirect: 'follow' });
   const ct = r.headers.get('content-type') || '';
   if (r.redirected && /\/login(?:\?|$)/.test(r.url) || ct.includes('text/html')) {
     location.href = '/login';
@@ -350,14 +350,23 @@ async function loadFeeds() {
 }
 function renderUpdated() {
   if (!S.feeds) return;
+  const last = Math.max(S.feeds.updated.news || 0, S.feeds.updated.x || 0, S.feeds.updated.trends || 0);
+  if (!last) return;
+  const hm = new Date(last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/i, '');
   const next = S.feeds.updated.news + S.status.refresh.news * 60e3 - Date.now();
-  $('#updated').textContent = `Updated ${ago(S.feeds.updated.news)} · next in ${Math.max(0, Math.ceil(next / 60e3))}m`;
+  $('#updated').textContent = `Updated ${hm}`;
+  $('#updated').title = `Last refresh ${ago(last)} · next automatic refresh in ${Math.max(0, Math.ceil(next / 60e3))}m`;
 }
 async function refreshNow() {
-  const b = $('#refresh'); b.classList.add('spinning'); b.disabled = true;
-  try { await api('/api/refresh', { method: 'POST' }); await loadFeeds(); toast('Stories refreshed'); }
-  catch (e) { toast('Refresh failed: ' + e.message); }
-  finally { b.classList.remove('spinning'); b.disabled = false; }
+  const b = $('#refresh');
+  if (b.disabled) return;
+  const label = b.querySelector('.txt');
+  b.classList.add('spinning'); b.disabled = true; b.setAttribute('aria-busy', 'true');
+  if (label) label.textContent = 'Refreshing…';
+  $('#updated').textContent = 'Refreshing all feeds…';
+  try { await api('/api/refresh?force=1', { method: 'POST' }); S.feeds = null; await loadFeeds(); toast('All feeds refreshed'); }
+  catch (e) { toast('Refresh failed: ' + e.message); renderUpdated(); }
+  finally { b.classList.remove('spinning'); b.disabled = false; b.removeAttribute('aria-busy'); if (label) label.textContent = 'Refresh'; }
 }
 
 // ---------- selection + shortcuts ----------

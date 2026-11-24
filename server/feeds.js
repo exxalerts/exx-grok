@@ -29,7 +29,7 @@ export async function get(url, { timeout = 15000, headers = {}, method = 'GET', 
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetch(url, { method, body, redirect: 'follow', signal: ctl.signal, headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...headers } });
+    const r = await fetch(url, { method, body, redirect: 'follow', signal: ctl.signal, headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Cache-Control": "no-cache", ...headers }});
     const data = as === 'buffer' ? Buffer.from(await r.arrayBuffer()) : await r.text();
     return { ok: r.ok, status: r.status, url: r.url, type: r.headers.get('content-type') || '', data, cookies: (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map(c => c.split(';')[0]).join('; ') };
   } finally { clearTimeout(t); }

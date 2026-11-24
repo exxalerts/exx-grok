@@ -82,10 +82,12 @@ async function refreshTrends() {
   }
 }
 
+let refreshRun = null;
 async function refreshAll(force = false) {
-  if (state.refreshing) return;
+  // A manual refresh that lands while an automatic one is running waits for it, then forces its own fresh fetch.
+  if (refreshRun) { if (!force) return refreshRun; await refreshRun.catch(() => {}); if (refreshRun) return refreshRun; }
   state.refreshing = true;
-  try {
+  refreshRun = (async () => {
     const now = Date.now();
     const jobs = [];
     if (force || now - state.updated.news >= cfg.newsMin * 60e3 - 5e3) jobs.push(refreshNews());
@@ -93,7 +95,8 @@ async function refreshAll(force = false) {
     if ((force && !state.top) || now - state.updated.top >= cfg.topMin * 60e3 - 5e3) jobs.push(refreshTop());
     if (force || now - state.updated.trends >= cfg.trendsMin * 60e3 - 5e3) jobs.push(refreshTrends());
     await Promise.allSettled(jobs);
-  } finally { state.refreshing = false; }
+  })();
+  try { await refreshRun; } finally { refreshRun = null; state.refreshing = false; }
 }
 setInterval(() => refreshAll(false).catch(e => log('refresh error', e)), 60e3);
 
