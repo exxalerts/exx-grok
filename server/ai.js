@@ -2,7 +2,14 @@
 import { cfg, has } from './env.js';
 import { STYLE_FINDINGS, SHORT_EXAMPLES, LONG_EXAMPLES, RULES_SHORT, RULES_LONG, CENSOR } from './style.js';
 
-export async function chat(messages, { json = false, temperature = 0.8, max_tokens = 1200 } = {}) {
+export async function chat(messages, opts = {}) {
+  // xAI sometimes answers 429 "at capacity" or 503 for a few seconds: wait and try twice more before giving up.
+  for (let i = 0; ; i++) {
+    try { return await chatOnce(messages, opts); }
+    catch (e) { if (i >= 2 || !/AI API (429|500|502|503)/.test(String(e.message))) throw e; await new Promise(r => setTimeout(r, 4000 * (i + 1))); }
+  }
+}
+async function chatOnce(messages, { json = false, temperature = 0.8, max_tokens = 1200 } = {}) {
   if (!has.ai) { const e = new Error('AI_API_KEY is missing in .env'); e.code = 'NO_AI'; throw e; }
   const body = { model: cfg.aiModel, messages, temperature, max_tokens };
   if (json) body.response_format = { type: 'json_object' };
