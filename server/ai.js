@@ -45,7 +45,49 @@ export function cleanPost(text, mode) {
     t = t.split(/\n+/).map(x => x.trim()).filter(x => x && !/^[\w\s.]*\.(com|org|net|tv)\s+(reported|reports)[^.]*\.?$/i.test(x)).join('\n\n');
     t = t.replace(/\n\n[—–-]\s*[A-Z][\w .&'’]{1,40}\.?$/, '').replace(/\s+[—–]\s*[A-Z][\w .&'’]{1,40}\.$/, '');
   }
-  return t;
+  return polish(t, mode);
+}
+
+// ---- Mechanical style fixes, matching how @EXXAlerts writes (applied outside quotes only) ----
+const STATES = 'Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming';
+const NUM = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50 };
+const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
+const MON_ABBR = { 'Jan.': 'January', 'Feb.': 'February', 'Aug.': 'August', 'Sept.': 'September', 'Sep.': 'September', 'Oct.': 'October', 'Nov.': 'November', 'Dec.': 'December' };
+// Run fn on the text outside quotation marks only.
+function outsideQuotes(t, fn) {
+  return t.split(/(“[^”]*”|"[^"\n]*")/).map((part, i) => i % 2 ? part : fn(part)).join('');
+}
+export function polish(t, mode) {
+  const fix = x => {
+    // Numerals for numbers ("3 children", "5 men"); not "one", which reads oddly as "1 of his computers".
+    x = x.replace(/\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\b(?![- ](year|month|week|day)s?-old\b)/gi, w => String(NUM[w.toLowerCase()]));
+    x = x.replace(/\b(\d+)-year-old\b/g, '$1-year-old');
+    // Vague dates and no clock times.
+    for (const [a, b] of Object.entries(MON_ABBR)) x = x.split(a + ' ').join(b + ' ');
+    x = x.replace(new RegExp(`\\b([Oo])n (?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),? )?(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?,? (\\d{4})`, 'g'), (m, o, mo, y) => `${o === 'O' ? 'I' : 'i'}n ${mo} ${y}`);
+    x = x.replace(new RegExp(`\\b([Oo])n (?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),? )?(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), (m, o, mo) => `${o === 'O' ? 'I' : 'i'}n ${mo}`);
+    x = x.replace(new RegExp(`\\b(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?, (\\d{4})`, 'g'), '$1 $2').replace(new RegExp(`\\b(${MONTHS}) \\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), '$1');
+    const clock = /,?\s*(?:(?:at|around|about|shortly (?:before|after)|just (?:before|after)|before|after|by)\s+(?:about\s+)?)?\d{1,2}(?::\d{2})?\s*(?:a\.m\.|p\.m\.|am\b|pm\b)/gi;
+    x = x.replace(clock, (m, off, all) => { const rest = all.slice(off + m.length); return /\.$/.test(m) && (rest === '' || (/^\s+[A-Z“"]/.test(rest) && !/^\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|morning|afternoon|evening|night)\b/.test(rest))) ? '.' : ''; });
+    // "said," not "stated," before a quote.
+    x = x.replace(/\bstated\b(?=[^.“"]{0,60}[,:]\s*$)/g, 'said');
+    return x.replace(/ {2,}/g, ' ').replace(/ ([,.])/g, '$1');
+  };
+  const paras = t.split(/\n\n/);
+  let out = paras.map(p => outsideQuotes(p, fix));
+  // The headline names only a state or region: "in Beverly Hills, California" -> "in California".
+  const st = new RegExp(`\\b(in|at|near|from|of) (?:[A-Z][\\w.'’-]*(?: [A-Z][\\w.'’-]*){0,3}), (${STATES})\\b`, 'g');
+  out[0] = out[0].replace(st, '$1 $2').replace(new RegExp(`(^|: |\\s)(?:[A-Z][\\w.'’-]*(?: [A-Z][\\w.'’-]*){0,2}), (${STATES}) (man|woman|teen|boy|girl|mother|father|police|officer|teacher|deputy|couple|family|student)\\b`, 'g'), '$1$2 $3');
+  if (mode !== 'short') {
+    // One sentence per paragraph: split a paragraph without quotes that runs 2+ sentences, as long as the post stays at 8 paragraphs or fewer.
+    const body = [];
+    for (const p of out.slice(1)) {
+      const parts = /["“”]/.test(p) ? [p] : p.split(/(?<=[a-z0-9)]\.)\s+(?=[A-Z0-9])/);
+      if (parts.length > 1 && parts.every(x => x.length > 40) && out.length + body.length + parts.length <= 9) body.push(...parts); else body.push(p);
+    }
+    out = [out[0], ...body];
+  }
+  return out.join(mode === 'short' ? ' ' : '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
 }
 const words = s => s.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
 export function headlineOverlap(post, headline) {
@@ -74,6 +116,11 @@ const sigWords = t => new Set(String(t).toLowerCase().replace(/[^a-z0-9 ]+/g, ' 
 function examplesFor(item) {
   const h = sigWords(item.title);
   return LONG_EXAMPLES.filter(ex => [...sigWords(ex.split('\n')[0])].filter(w => h.has(w)).length < 4);
+}
+
+function shortExamplesFor(item) {
+  const h = sigWords(item.title);
+  return SHORT_EXAMPLES.filter(ex => [...sigWords(ex)].filter(w => h.has(w)).length < 3);
 }
 
 // ---- Web research (xAI Responses API + web_search) for stories whose article can't be read ----
@@ -135,7 +182,7 @@ async function generateOnce(item, mode, art, { instructions = '' } = {}) {
   const prompt = [
     isShort ? RULES_SHORT : RULES_LONG,
     '',
-    isShort ? 'Examples of real high-performing @EXXAlerts short posts:\n' + SHORT_EXAMPLES.map(s => '- ' + s).join('\n')
+    isShort ? 'Examples of real high-performing @EXXAlerts short posts:\n' + shortExamplesFor(item).map(s => '- ' + s).join('\n')
       : 'Real @EXXAlerts long posts. Match their voice, rhythm, paragraph count and level of detail exactly. Never copy their facts, and follow the rules above where an example differs (e.g. exact dates, a city in the headline):\n\n' + examplesFor(item).join('\n\n---\n\n'),
     '',
     'MATERIAL:', material(item, art),
@@ -153,11 +200,16 @@ async function generateOnce(item, mode, art, { instructions = '' } = {}) {
     text = await run(`\n\nYour previous attempt reused ${overlap} consecutive words from the headline: "${text}". Rewrite with a completely different hook and different wording.`);
     overlap = headlineOverlap(isShort ? text : text.split('\n')[0], item.title);
   }
+  if (!isShort && (text.length > 1000 || text.split('\n\n').length > 7)) {
+    // Real @EXXAlerts long posts run ~550-850 characters; cut the case-file detail, keep the story.
+    const tight = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `${RULES_LONG}\n\nThis draft is too long (${text.length} characters, ${text.split('\n\n').length} paragraphs). Rewrite it to about 650-850 characters: the SAME headline word for word, then 4-5 body paragraphs of ONE sentence each. Keep the names and ages, the most vivid details, the single best quote word for word, and the outcome as the last line. Drop procedural detail (charge counts, statutes, addresses, fines, extra agencies, extra quotes). Do not add any fact that is not in the draft. Output only the post.\n\nDRAFT:\n${text}` }], { temperature: 0.4, max_tokens: 900 }), mode);
+    if (tight.length >= 300 && tight.length < text.length) text = tight.split('\n\n')[0] === text.split('\n\n')[0] ? tight : [text.split('\n\n')[0], ...tight.split('\n\n').slice(1)].join('\n\n');
+  }
   if (isShort && text.length > 280) {
     text = cleanPost(await chat([{ role: 'system', content: SYSTEM }, { role: 'user', content: `Shorten this to under 260 characters, same style and opener, keep any outlet credit:\n${text}` }], { temperature: 0.4, max_tokens: 200 }), 'short');
   }
   return { text, overlap, thin: !art?.paragraphs?.length && !item.summary && !art?.coverage?.paragraphs?.length && !art?.research,
-    material: { articleChars: (art?.paragraphs || []).join(' ').length, articleBlocked: !!art?.blocked, coverage: art?.coverage?.url || '', coverageTried: (art?.coverage?.tried || []).map(t => t.src + ': ' + (t.error || (t.status + ' ' + t.chars + ' chars'))), researched: !!art?.research, researchChars: (art?.research || '').length } };
+    material: { articleChars: (art?.paragraphs || []).join(' ').length, articleBlocked: !!art?.blocked, coverage: art?.coverage?.url || '', coverageChars: (art?.coverage?.paragraphs || []).join(' ').length, coverageTried: (art?.coverage?.tried || []).map(t => t.src + ': ' + (t.error || (t.status + ' ' + t.chars + ' chars'))), researched: !!art?.research, researchChars: (art?.research || '').length } };
 }
 
 // ---- Local column: AI picks the stories most like what performs on @EXXAlerts ----

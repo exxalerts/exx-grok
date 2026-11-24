@@ -230,6 +230,17 @@ async function route(req, res) {
         const have = () => textChars(art) + textChars(art.coverage) + (item.kind === 'x' ? (item.title || '').length : 0);
         if (item.kind !== 'x' && have() < need) art.coverage = await findCoverage(item.title, { exclude: art.url || '' }).catch(() => null);
         if (have() < need) art.research = await AI.research(item, [item.summary, art.description, ...(art.paragraphs || []), ...(art.coverage?.paragraphs || [])].filter(Boolean).join('\n')).catch(() => null);
+        // Research lists the publisher URLs it used: read the best of those pages in full too (Render's IP is often rate-limited by Google News).
+        if (art.research && item.kind !== 'x' && have() < need) {
+          const urls = [...new Set((art.research.split(/Sources?:/i).pop().match(/https?:\/\/[^\s)\]>,"']+/g) || []))]
+            .filter(u => !/(x|twitter|youtube|facebook|instagram|tiktok|reddit|news\.google)\.com/i.test(u)).slice(0, 4);
+          const keys = String(item.title).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 4);
+          const pages = await Promise.all(urls.map(u => articleMeta(u, { fresh: true }).catch(() => null)));
+          const best = pages.filter(a => a && !a.blocked && textChars(a) >= 1200)
+            .filter(a => { const t = a.paragraphs.join(' ').toLowerCase(); return keys.filter(k => t.includes(k)).length >= Math.min(2, keys.length); })
+            .sort((a, b) => textChars(b) - textChars(a))[0];
+          if (best) art.coverage = { src: new URL(best.url).hostname.replace(/^www\./, ''), url: best.url, paragraphs: best.paragraphs, tried: art.coverage?.tried || [] };
+        }
       }
       try { return json(res, 200, await AI.generatePost(item, mode, art, { instructions })); }
       catch (e) { return json(res, 502, { error: e.message }); }
