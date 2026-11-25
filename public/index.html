@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>exx.grok</title>
-  <meta name="description" content="exx.grok — live national, local, political and X feeds with AI post drafts for @EXXAlerts.">
+  <meta name="description" content="exx.grok — live national, local, political, international and X feeds with AI post drafts for @EXXAlerts.">
   <meta name="theme-color" content="#000000">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon-192.png" type="image/png">
@@ -54,11 +54,17 @@
         <div class="col-body" id="b-pol" tabindex="-1"></div>
       </div>
 
-      <div class="col" data-tone="x" id="col-x">
-        <div class="col-head"><span>X feed</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="x" title="Refresh X feed" aria-label="Refresh X feed"><span class="ico">↻</span></button><span class="count" id="n-x">0</span></span></div>
-        <div class="col-msg" id="m-x"></div>
-        <div class="col-body" id="b-x" tabindex="-1"></div>
+      <div class="col" data-tone="int" id="col-int">
+        <div class="col-head"><span>International news</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="international" title="Refresh International news" aria-label="Refresh International news"><span class="ico">↻</span></button><span class="count" id="n-int">0</span></span></div>
+        <div class="col-msg" id="m-int"></div>
+        <div class="col-body" id="b-int" tabindex="-1"></div>
       </div>
+    </section>
+
+    <section class="x-box col" data-tone="x" id="col-x">
+      <div class="col-head"><span>X feed</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="x" title="Refresh X feed" aria-label="Refresh X feed"><span class="ico">↻</span></button><span class="count" id="n-x">0</span></span></div>
+      <div class="col-msg" id="m-x"></div>
+      <div class="x-grid" id="b-x" tabindex="-1"></div>
     </section>
 
     <section class="trending" id="trending">
@@ -144,7 +150,7 @@
       <table class="keys-table">
         <tr><td><kbd>/</kbd></td><td>Search / filter</td></tr>
         <tr><td><kbd>R</kbd></td><td>Refresh the column you are in</td></tr>
-        <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></td><td>Jump to National / Local / Political / X feed</td></tr>
+        <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> <kbd>5</kbd></td><td>Jump to National / Local / Political / International / X feed</td></tr>
         <tr><td><kbd>J</kbd> <kbd>K</kbd></td><td>Next / previous card</td></tr>
         <tr><td><kbd>S</kbd> <kbd>L</kbd></td><td>Generate short / long post for the selected card</td></tr>
         <tr><td><kbd>V</kbd></td><td>Generate video for the selected card</td></tr>

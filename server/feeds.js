@@ -57,6 +57,53 @@ export async function fetchPolitical({ hours = 18, max = 40, excludeTitles = [] 
   return { items: out, status };
 }
 
+// World/international news in the @EXXAlerts vein: crime, attacks, disasters, accidents,
+// viral/shocking incidents and major world events — not dry diplomacy, business, opinion or sports.
+export const INTERNATIONAL_FEEDS = {
+  'BBC World': 'https://feeds.bbci.co.uk/news/world/rss.xml',
+  'Fox World': 'https://moxie.foxnews.com/google-publisher/world.xml',
+  'NBC World': 'https://feeds.nbcnews.com/nbcnews/public/world',
+  'ABC World': 'https://abcnews.go.com/abcnews/internationalheadlines',
+  'CBS World': 'https://www.cbsnews.com/latest/rss/world',
+  'Sky News': 'https://feeds.skynews.com/feeds/rss/world.xml',
+  'Al Jazeera': 'https://www.aljazeera.com/xml/rss/all.xml',
+  'The Independent': 'https://www.independent.co.uk/news/world/rss',
+  'Associated Press': 'https://news.google.com/rss/search?q=site:apnews.com+(world+OR+international+OR+ukraine+OR+israel+OR+gaza+OR+iran+OR+china+OR+russia)+when:12h&hl=en-US&gl=US&ceid=US:en',
+  'Reuters': 'https://news.google.com/rss/search?q=site:reuters.com+(world+OR+international)+when:12h&hl=en-US&gl=US&ceid=US:en',
+};
+const INT_SKIP = /\b(opinion|op-ed|editorial|commentary|analysis:|column:|sports?|nfl|nba|mlb|nhl|premier league|cricket|tennis|soccer match|entertainment|hollywood|celebrity|box office|album|movie review|stock[s]?|markets?|shares|nasdaq|dow jones|s&p|gdp|inflation|earnings|trade deal|tariffs?|diplomacy|diplomat[s]?|summit agenda|minister meets|business news|recipe|horoscope)\b/i;
+const INT_KEEP = /\b(attack|airstrike|air strike|missile|rocket|bomb(?:ing|ed)?|explosion|exploded|blast|crash(?:ed)?|collision|kill(?:ed|ing|s)?|dead|death|died|murder(?:ed)?|stabb(?:ed|ing)|shot|shooting|gunman|hostage|hijack(?:ed|ing)?|kidnap(?:ped|ping)?|abduct(?:ed|ion)?|earthquake|tsunami|flood(?:ing|ed)?|hurricane|typhoon|cyclone|wildfire|volcano|disaster|collaps(?:e|ed)|sank|sinking|plane|aircraft|derail(?:ed|ment)?|evacuat(?:e|ed|ion)|riot|clash(?:es)?|troops|soldiers?|war\b|invasion|siege|coup|assassina(?:te|ted|tion)|casualt(?:y|ies)|wounded|injured|rescue(?:d)?|arrest(?:ed)?|charged|executed|terror(?:ist|ism)?|militant|rebel[s]?|massacre|famine|outbreak|pandemic|ferry|assault|r\*pe|rape|behead|drone|shelling|bombard(?:ed|ment)?|pirat(?:e|es|cy)|seized|missing|refugees?|nuclear|missile)\b/i;
+// US domestic politics/crime belongs in National/Political/Local — keep a story only if it has a foreign hook too.
+const INT_US_ONLY = /\b(congress|senate|white house|gop|republican|democrat|supreme court|doj|fbi|ice raids?|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)\b/i;
+const INT_WORLD = /\b(ukraine|israel|gaza|iran|russia|china|taiwan|north korea|south korea|japan|india|pakistan|syria|yemen|lebanon|turkey|egypt|sudan|nigeria|kenya|ethiopia|mexico|canada|brazil|argentina|venezuela|colombia|uk\b|britain|british|england|france|germany|italy|spain|poland|australia|new zealand|europe|africa|asia|middle east|un\b|united nations|nato|eu\b|embassy|foreign|worldwide|global|international|libya|iraq|afghanistan|haiti|cuba|philippines|indonesia|thailand|vietnam|saudi|qatar|uae|dubai|moscow|kyiv|tehran|beijing|gaza|west bank|houthis?|hezbollah|hamas|idf|putin|zelensky|netanyahu|xi jinping)\b/i;
+
+export async function fetchInternational({ hours = 18, max = 40, excludeTitles = [] } = {}) {
+  const cut = Date.now() - hours * 3600e3;
+  const taken = new Set(excludeTitles.map(t => String(t).toLowerCase().replace(/\s+/g, ' ').trim()));
+  const all = [], status = {};
+  await Promise.all(Object.entries(INTERNATIONAL_FEEDS).map(async ([src, feed]) => {
+    try {
+      const r = await get(feed);
+      status[src] = { ok: r.ok, status: r.status };
+      if (!r.ok) return;
+      for (const i of parseRss(r.data)) {
+        if (i.ts < cut || i.ts > Date.now() + 10 * 60e3) continue;
+        let title = i.title.replace(/\s+-\s+[^-]+$/, '');
+        if (INT_SKIP.test(title) || !INT_KEEP.test(title)) continue;
+        if (INT_US_ONLY.test(title) && !INT_WORLD.test(title)) continue;
+        if (title.split(/\s+/).length < 5) continue;
+        const key = title.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (taken.has(key)) continue;
+        taken.add(key);
+        const url = i.link;
+        all.push({ id: idOf('int|' + src, url), kind: 'international', src, title, summary: i.desc || '', url, ts: i.ts, image: i.image || '', pubUrl: /news\.google\.com/.test(url) ? '' : url });
+      }
+    } catch (e) { status[src] = { ok: false, status: 0, error: String(e.message || e) }; }
+  }));
+  const out = all.sort((a, b) => b.ts - a.ts).slice(0, max);
+  return { items: out, status };
+}
+
 
 // Searches that surface the kind of local stories that do well on @EXXAlerts
 // (police/bodycam/911, bizarre crime, viral local incidents, place-tagged hooks).

@@ -6,9 +6,10 @@ const SRC_RGB = {
   'Fox News': '29 78 216', 'CNN': '220 38 38', 'ABC News': '234 88 12', 'NBC News': '147 51 234', 'The Independent': '225 29 72',
   'Axios': '13 148 136', 'The Hill': '2 132 199', 'Associated Press': '202 138 4',
   'Fox Politics': '29 78 216', 'NBC Politics': '147 51 234', 'ABC Politics': '234 88 12', 'CBS Politics': '1 80 170', 'Washington Post': '15 23 42', 'NPR Politics': '198 40 40',
+  'BBC World': '187 0 0', 'Fox World': '29 78 216', 'NBC World': '147 51 234', 'ABC World': '234 88 12', 'CBS World': '1 80 170', 'Sky News': '15 23 42', 'Al Jazeera': '185 28 28', 'Reuters': '255 128 0',
   '@EricLDaugh': '59 130 246', '@LeadingReport': '234 88 12', '@CollinRugg': '16 185 129', '@Breaking911': '220 38 38', '@NickSortor': '168 85 247', '@nicksortor': '168 85 247',
 };
-const TONE = { nat: '37 99 235', loc: '22 163 74', pol: '124 58 237', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
+const TONE = { nat: '37 99 235', loc: '22 163 74', pol: '124 58 237', int: '15 23 42', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
 const NAT_SOURCES = ['All', 'Fox News', 'CNN', 'ABC News', 'NBC News', 'The Independent', 'Axios', 'The Hill', 'Associated Press'];
 
 const S = { posted: {}, status: null, feeds: null, q: '', natSrc: 'All', drafts: new Map(), cards: new Map(), sel: null, lastUpdated: 0 };
@@ -181,26 +182,34 @@ function renderColumns(only) {
     const pdown = Object.entries(f.politicalStatus || {}).filter(([, v]) => !v.ok).map(([k]) => k);
     $('#m-pol').textContent = f.politicalError || (pdown.length ? `Couldn't reach: ${pdown.join(', ')}. They'll be retried on the next refresh.` : '');
   }
+  if (want('int')) {
+    fill('int', (f.international || []).filter(matches));
+    const idown = Object.entries(f.internationalStatus || {}).filter(([, v]) => !v.ok).map(([k]) => k);
+    $('#m-int').textContent = f.internationalError || (idown.length ? `Couldn't reach: ${idown.join(', ')}. They'll be retried on the next refresh.` : '');
+  }
   if (want('x')) {
-    fill('x', f.x.filter(matches));
+    fill('x', f.x.filter(matches), { horizontal: true, resetScroll: true });
     const st = S.status;
     $('#m-x').textContent = f.xError === 'NO_KEYS' ? 'Add your X API keys to .env to load posts from ' + st.accounts.map(a => '@' + a).join(', ') + '.'
       : f.xError ? 'X feed error: ' + f.xError : Object.keys(f.xErrors || {}).length ? 'Some accounts failed: ' + Object.entries(f.xErrors).map(([k, v]) => `@${k} (${v})`).join('; ') : '';
   }
 }
-function fill(col, items) {
+function fill(col, items, opts = {}) {
   const body = $('#b-' + col);
   const top = body.scrollTop;
   $('#n-' + col).textContent = items.length;
   if (!items.length) { body.replaceChildren(h('div', { class: 'empty' }, S.q ? 'No stories match your filter.' : col === 'x' && S.feeds.xError ? 'Nothing to show yet.' : 'No stories yet.')); return; }
-  const els = items.map(it => {
+  // X box: newest first, laid out in 2-high columns left to right (CSS grid-auto-flow: column).
+  const list = col === 'x' ? [...items].sort((a, b) => (b.ts || 0) - (a.ts || 0)) : items;
+  const els = list.map(it => {
     let c = S.cards.get(it.id);
     if (!c) { c = { item: it, el: buildCard(it, col) }; S.cards.set(it.id, c); }
     else c.item = it;
     return c.el;
   });
   body.replaceChildren(...els); // keeps existing card elements (and open drafts) intact
-  body.scrollTop = top;
+  if (opts.horizontal) body.scrollLeft = 0; // newest stays at the left
+  else body.scrollTop = top;
 }
 
 const io = new IntersectionObserver(entries => {
@@ -396,22 +405,22 @@ $('#pubGo').addEventListener('click', async e => {
 });
 
 // ---------- loading / refresh ----------
-const COL_LABEL = { national: 'National', local: 'Local', political: 'Political', x: 'X feed', top: 'Top 5', trends: 'Trending' };
-const COL_UPDATED_KEY = { national: 'national', local: 'local', political: 'political', x: 'x', top: 'top', trends: 'trends' };
+const COL_LABEL = { national: 'National', local: 'Local', political: 'Political', international: 'International', x: 'X feed', top: 'Top 5', trends: 'Trending' };
+const COL_UPDATED_KEY = { national: 'national', local: 'local', political: 'political', international: 'international', x: 'x', top: 'top', trends: 'trends' };
 
 async function loadFeeds() {
   const f = await api('/api/feeds');
   const changed = JSON.stringify(f.updated) !== JSON.stringify(S.feeds?.updated);
   S.feeds = f;
   if (changed || !S.lastUpdated) { renderTrending(); renderTop(); renderColumns(); }
-  S.lastUpdated = Math.max(f.updated.news || 0, f.updated.x || 0, f.updated.trends || 0, f.updated.national || 0, f.updated.local || 0, f.updated.political || 0);
+  S.lastUpdated = Math.max(f.updated.news || 0, f.updated.x || 0, f.updated.trends || 0, f.updated.national || 0, f.updated.local || 0, f.updated.political || 0, f.updated.international || 0);
   renderUpdated();
   paintAllPosted();
 }
 
 function colStamp(col) {
   const u = S.feeds?.updated || {};
-  return u[COL_UPDATED_KEY[col]] || (['national','local','political'].includes(col) ? u.news : 0) || 0;
+  return u[COL_UPDATED_KEY[col]] || (['national','local','political','international'].includes(col) ? u.news : 0) || 0;
 }
 function fmtUpdated(ts) {
   if (!ts) return '';
@@ -424,7 +433,7 @@ function refreshTitle(col) {
 }
 function renderUpdated() {
   if (!S.feeds) return;
-  const last = Math.max(S.feeds.updated.news || 0, S.feeds.updated.x || 0, S.feeds.updated.trends || 0, S.feeds.updated.national || 0, S.feeds.updated.local || 0, S.feeds.updated.political || 0, S.feeds.updated.top || 0);
+  const last = Math.max(S.feeds.updated.news || 0, S.feeds.updated.x || 0, S.feeds.updated.trends || 0, S.feeds.updated.national || 0, S.feeds.updated.local || 0, S.feeds.updated.political || 0, S.feeds.updated.international || 0, S.feeds.updated.top || 0);
   if (last) {
     const hm = fmtUpdated(last);
     const next = (S.feeds.updated.news || last) + (S.status?.refresh?.news || 10) * 60e3 - Date.now();
@@ -442,6 +451,7 @@ function applyColumn(col, f) {
     if (col === 'national') { S.feeds.national = f.national; S.feeds.nationalStatus = f.nationalStatus; }
     else if (col === 'local') { S.feeds.local = f.local; S.feeds.localMode = f.localMode; S.feeds.localError = f.localError; }
     else if (col === 'political') { S.feeds.political = f.political; S.feeds.politicalStatus = f.politicalStatus; S.feeds.politicalError = f.politicalError; }
+    else if (col === 'international') { S.feeds.international = f.international; S.feeds.internationalStatus = f.internationalStatus; S.feeds.internationalError = f.internationalError; }
     else if (col === 'x') { S.feeds.x = f.x; S.feeds.xError = f.xError; S.feeds.xErrors = f.xErrors; }
     else if (col === 'top') { S.feeds.top = f.top; S.feeds.topLive = f.topLive; S.feeds.topScanned = f.topScanned; S.feeds.topError = f.topError; }
     else if (col === 'trends') { S.feeds.trending = f.trending; S.feeds.trendError = f.trendError; }
@@ -451,6 +461,7 @@ function applyColumn(col, f) {
   else if (col === 'national') renderColumns('nat');
   else if (col === 'local') renderColumns('loc');
   else if (col === 'political') renderColumns('pol');
+  else if (col === 'international') renderColumns('int');
   else if (col === 'x') renderColumns('x');
   paintAllPosted();
   renderUpdated();
@@ -476,7 +487,7 @@ async function refreshCol(col) {
 function refreshFocused() {
   const el = S.sel ? S.cards.get(S.sel)?.el : null;
   const host = el?.closest('[id^="col-"], #trending, .top5');
-  const map = { 'col-nat': 'national', 'col-loc': 'local', 'col-pol': 'political', 'col-x': 'x', trending: 'trends' };
+  const map = { 'col-nat': 'national', 'col-loc': 'local', 'col-pol': 'political', 'col-int': 'international', 'col-x': 'x', trending: 'trends' };
   const col = host?.classList.contains('top5') ? 'top' : map[host?.id];
   if (col) refreshCol(col);
 }
@@ -509,7 +520,7 @@ document.addEventListener('keydown', e => {
   if (k === '/') { e.preventDefault(); $('#q').focus(); }
   else if (k === 'r') refreshFocused();
   else if (k === '?') $('#helpDlg').showModal();
-  else if (['1', '2', '3', '4'].includes(k)) { const col = ['nat', 'loc', 'pol', 'x'][+k - 1]; const first = $('#b-' + col + ' .card'); $('#col-' + col).scrollIntoView({ behavior: 'smooth', block: 'start' }); if (first) select(first.dataset.id); }
+  else if (['1', '2', '3', '4', '5'].includes(k)) { const col = ['nat', 'loc', 'pol', 'int', 'x'][+k - 1]; const first = $('#b-' + col + ' .card'); $('#col-' + col).scrollIntoView({ behavior: 'smooth', block: 'start' }); if (first) select(first.dataset.id); }
   else if (k === 'j') move(1); else if (k === 'k') move(-1);
   else if ((k === 's' || k === 'l') && S.sel) generate(S.sel, k === 's' ? 'short' : 'long');
   else if (k === 'v' && S.sel) { const d = draftOf(S.sel); openVideo(S.cards.get(S.sel).item, d, { api, toast, imgUrl, setMedia: f => setMedia(S.sel, f), status: S.status }); }
@@ -527,7 +538,8 @@ window.addEventListener('appinstalled', () => { $('#install').hidden = true; toa
 
 // ---------- boot ----------
 async function boot() {
-  for (const col of ['nat', 'loc', 'pol', 'x']) $('#b-' + col).replaceChildren(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
+  for (const col of ['nat', 'loc', 'pol', 'int']) $('#b-' + col).replaceChildren(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
+  $('#b-x')?.replaceChildren(...Array.from({ length: 4 }, () => h('div', { class: 'skeleton' })));
   for (const plat of TREND_PLATFORMS) $('#b-trend-' + plat)?.replaceChildren(h('div', { class: 'trend-empty muted' }, 'Loading…'));
   renderChips();
   try { S.status = await api('/api/status'); renderStatus(); }
