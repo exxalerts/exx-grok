@@ -30,7 +30,7 @@ export async function api(path, { method = 'GET', body, headers = {}, raw = fals
   }
   if (raw) { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'HTTP ' + r.status); return r; }
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error(d.error || 'HTTP ' + r.status); e.code = d.code; throw e; }
+  if (!r.ok) { const e = new Error(d.error || 'HTTP ' + r.status); e.code = d.code || r.status; e.queue = d.queue; throw e; }
   return d;
 }
 function h(tag, props = {}, ...kids) {
@@ -557,7 +557,7 @@ async function boot() {
 boot();
 
 // ---------- video clipper ----------
-const C = { meta: null, jobId: null, poll: null };
+const C = { meta: null, jobId: null, poll: null, ownBusy: false };
 
 function setClipOpen(open) {
   $('#clipView').hidden = !open;
@@ -565,7 +565,13 @@ function setClipOpen(open) {
   const tab = $('#clipTab');
   tab.classList.toggle('active', open);
   tab.setAttribute('aria-pressed', open ? 'true' : 'false');
-  if (open) { window.scrollTo({ top: 0, behavior: 'instant' }); setTimeout(() => $('#clipUrl').focus(), 20); }
+  if (open) {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    ensureClipPoll();
+    setTimeout(() => $('#clipUrl').focus(), 20);
+  } else if (!C.ownBusy) {
+    clipStopPoll();
+  }
 }
 $('#clipTab').addEventListener('click', () => setClipOpen($('#clipView').hidden));
 $('#clipBack').addEventListener('click', () => setClipOpen(false));
@@ -578,11 +584,114 @@ function clipShowErr(msg) {
   el.hidden = !msg;
 }
 function clipStopPoll() { if (C.poll) { clearInterval(C.poll); C.poll = null; } }
-function clipSetBusy(busy) {
-  $('#clipFetch').disabled = busy;
-  $('#clipGo').disabled = busy;
-  $('#clipGo').classList.toggle('busy', busy);
+function ensureClipPoll() {
+  if (C.poll) return;
+  C.poll = setInterval(tickClipProgress, 750);
+  tickClipProgress();
+}
+
+function clipSetOwnBusy(busy) {
+  C.ownBusy = !!busy;
+  $('#clipGo').classList.toggle('busy', !!busy);
   $('#clipCancel').hidden = !busy;
+  if (busy) $('#clipGo').disabled = true;
+}
+
+function paintClipBar(prog, { stage, eta, detail, ready, foreign } = {}) {
+  const pct = Math.max(0, Math.min(100, Math.round(prog || 0)));
+  $('#clipBarFill').style.width = pct + '%';
+  $('#clipBarFill').classList.toggle('active', !ready && pct > 0 && pct < 100);
+  $('#clipBar').setAttribute('aria-valuenow', String(pct));
+  $('#clipStage').textContent = stage || (ready ? 'Ready for next clip' : 'Working…');
+  const etaEl = $('#clipEta');
+  etaEl.textContent = ready ? (eta || 'Ready for next clip') : (eta || '');
+  etaEl.classList.toggle('ready', !!ready);
+  if (detail) $('#clipProgText').textContent = detail;
+  else if (ready) $('#clipProgText').textContent = 'Only one clip can run at a time. This bar shows download + encode progress and how long is left.';
+  else if (foreign) $('#clipProgText').textContent = 'Another clip is running on this shared app. Prepare MP4 stays disabled until it finishes.';
+  if (!C.ownBusy) $('#clipGo').disabled = !ready;
+}
+
+function stageLabel(j, { foreign } = {}) {
+  const st = (j && (j.stage || j.status)) || '';
+  if (foreign && (st === 'downloading' || st === 'inspecting' || st === 'starting' || st === 'encoding' || st === 'processing')) {
+    return 'Another clip is in progress';
+  }
+  return ({
+    starting: 'Starting…',
+    inspecting: 'Inspecting video…',
+    downloading: 'Downloading…',
+    encoding: 'Encoding MP4…',
+    processing: 'Encoding MP4…',
+    done: 'Done',
+    error: 'Failed',
+  })[st] || (j?.detail ? j.detail.replace(/….*$/, '…') : 'Working…');
+}
+
+async function tickClipProgress() {
+  try {
+    if (C.jobId && C.ownBusy) {
+      let j;
+      try {
+        j = await api('/api/clip/status?id=' + encodeURIComponent(C.jobId));
+      } catch (err) {
+        if (err.message && /not found|expired/i.test(err.message)) {
+          C.jobId = null;
+          clipSetOwnBusy(false);
+          paintClipBar(0, { ready: true, stage: 'Ready for next clip' });
+          if ($('#clipView').hidden) clipStopPoll();
+          return;
+        }
+        throw err;
+      }
+      const eta = j.etaText || '';
+      const extra = [j.speed, j.detail].filter(Boolean).join(' · ');
+      paintClipBar(j.progress, { stage: stageLabel(j), eta, detail: extra, ready: j.status === 'done' });
+      if (j.status === 'done') {
+        clipSetOwnBusy(false);
+        $('#clipDoneName').textContent = j.filename;
+        const parts = [
+          j.resolution ? `${j.resolution} (${j.width}×${j.height})` : '',
+          j.durationText ? `Duration ${j.durationText}` : '',
+          j.size ? `${(j.size / 1048576).toFixed(1)} MB` : '',
+        ].filter(Boolean);
+        $('#clipDoneMeta').textContent = parts.join(' · ');
+        const dl = $('#clipDownload');
+        dl.href = j.downloadUrl;
+        dl.setAttribute('download', j.filename);
+        $('#clipDone').hidden = false;
+        paintClipBar(100, { stage: 'Done', eta: 'Ready for next clip', detail: extra, ready: true });
+        C.jobId = null;
+        if ($('#clipView').hidden) clipStopPoll();
+      } else if (j.status === 'error') {
+        clipSetOwnBusy(false);
+        C.jobId = null;
+        paintClipBar(j.progress || 0, { stage: 'Failed', ready: true, detail: j.error || 'Clip failed.' });
+        clipShowErr(j.error || 'Clip failed.');
+        if ($('#clipView').hidden) clipStopPoll();
+      }
+    } else {
+      const q = await api('/api/clip/status');
+      if (q.busy && q.job) {
+        const eta = q.job.etaText || '';
+        const extra = [q.job.speed, q.job.detail].filter(Boolean).join(' · ');
+        paintClipBar(q.job.progress, {
+          stage: stageLabel(q.job, { foreign: true }),
+          eta,
+          detail: extra,
+          foreign: true,
+          ready: false,
+        });
+      } else if (!C.ownBusy) {
+        const doneVisible = !$('#clipDone').hidden;
+        paintClipBar(doneVisible ? 100 : 0, {
+          ready: true,
+          stage: doneVisible ? 'Done' : 'Ready for next clip',
+          eta: 'Ready for next clip',
+        });
+      }
+    }
+  } catch { /* keep last paint; next tick retries */ }
 }
 
 function renderClipMeta(info) {
@@ -623,7 +732,7 @@ $('#clipResetTimes').addEventListener('click', () => {
 });
 
 $('#clipClear').addEventListener('click', () => {
-  clipStopPoll();
+  if (C.ownBusy) return;
   C.meta = null;
   C.jobId = null;
   $('#clipUrl').value = '';
@@ -631,11 +740,9 @@ $('#clipClear').addEventListener('click', () => {
   $('#clipEnd').value = '';
   $('#clipPreview').hidden = true;
   $('#clipResetTimes').hidden = true;
-  $('#clipProgBox').hidden = true;
-  $('#clipBarFill').style.width = '0%';
   $('#clipDone').hidden = true;
   clipShowErr('');
-  clipSetBusy(false);
+  paintClipBar(0, { ready: true, stage: 'Ready for next clip' });
   $('#clipUrl').focus();
 });
 
@@ -644,7 +751,7 @@ $('#clipForm').addEventListener('submit', async e => {
   const url = $('#clipUrl').value.trim();
   if (!url) return;
   clipShowErr('');
-  $('#clipDone').hidden = true;
+  if (!C.ownBusy) $('#clipDone').hidden = true;
   $('#clipFetch').classList.add('busy');
   $('#clipFetch').disabled = true;
   try {
@@ -662,66 +769,43 @@ $('#clipForm').addEventListener('submit', async e => {
 $('#clipGo').addEventListener('click', async () => {
   const url = $('#clipUrl').value.trim();
   if (!url) { clipShowErr('Paste a video URL first.'); $('#clipUrl').focus(); return; }
-  clipStopPoll();
   clipShowErr('');
   $('#clipDone').hidden = true;
-  $('#clipProgBox').hidden = false;
-  $('#clipBarFill').style.width = '2%';
-  $('#clipProgText').textContent = 'Starting…';
-  clipSetBusy(true);
+  paintClipBar(2, { stage: 'Starting…', eta: 'Estimating time…', detail: 'Starting…' });
+  clipSetOwnBusy(true);
+  ensureClipPoll();
   try {
     const r = await api('/api/clip/start', {
       method: 'POST',
       body: { url, start: $('#clipStart').value.trim(), end: $('#clipEnd').value.trim() },
     });
     C.jobId = r.jobId;
-    const pollOnce = async () => {
-      try {
-        const j = await api('/api/clip/status?id=' + encodeURIComponent(C.jobId));
-        $('#clipBarFill').style.width = Math.max(2, Math.min(100, j.progress || 0)) + '%';
-        $('#clipProgText').textContent = j.detail || j.status;
-        if (j.status === 'done') {
-          clipStopPoll();
-          clipSetBusy(false);
-          $('#clipDoneName').textContent = j.filename;
-          const parts = [
-            j.resolution ? `${j.resolution} (${j.width}×${j.height})` : '',
-            j.durationText ? `Duration ${j.durationText}` : '',
-            j.size ? `${(j.size / 1048576).toFixed(1)} MB` : '',
-          ].filter(Boolean);
-          $('#clipDoneMeta').textContent = parts.join(' · ');
-          const dl = $('#clipDownload');
-          dl.href = j.downloadUrl;
-          dl.setAttribute('download', j.filename);
-          $('#clipDone').hidden = false;
-        } else if (j.status === 'error') {
-          clipStopPoll();
-          clipSetBusy(false);
-          $('#clipProgBox').hidden = true;
-          clipShowErr(j.error || 'Clip failed.');
-        }
-      } catch (err) {
-        clipStopPoll();
-        clipSetBusy(false);
-        clipShowErr(err.message);
-      }
-    };
-    await pollOnce();
-    if (C.jobId && $('#clipDone').hidden && $('#clipErr').hidden) {
-      C.poll = setInterval(pollOnce, 750);
-    }
+    tickClipProgress();
   } catch (err) {
-    clipSetBusy(false);
-    $('#clipProgBox').hidden = true;
-    clipShowErr(err.message);
+    clipSetOwnBusy(false);
+    if (err.code === 429 || /already in progress|currently clipping/i.test(err.message || '')) {
+      paintClipBar(err.queue?.job?.progress || 5, {
+        stage: 'Another clip is in progress',
+        eta: err.queue?.job?.etaText || '',
+        foreign: true,
+        ready: false,
+        detail: err.message,
+      });
+    } else {
+      paintClipBar(0, { ready: true, stage: 'Ready for next clip' });
+      clipShowErr(err.message);
+    }
   }
 });
 
 $('#clipCancel').addEventListener('click', async () => {
   if (!C.jobId) return;
-  clipStopPoll();
-  await api('/api/clip/cancel', { method: 'POST', body: { id: C.jobId } }).catch(() => {});
-  clipSetBusy(false);
-  $('#clipProgBox').hidden = true;
+  const id = C.jobId;
+  await api('/api/clip/cancel', { method: 'POST', body: { id } }).catch(() => {});
+  clipSetOwnBusy(false);
+  C.jobId = null;
+  paintClipBar(0, { ready: true, stage: 'Ready for next clip', detail: 'Cancelled.' });
   clipShowErr('Cancelled.');
+  if ($('#clipView').hidden) clipStopPoll();
 });
+

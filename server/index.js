@@ -355,13 +355,15 @@ async function route(req, res) {
     if (p === '/api/clip/start' && req.method === 'POST') {
       const { url: rawUrl, start, end } = await readJson(req);
       try { return json(res, 202, await Clip.startClip({ url: rawUrl, start, end })); }
-      catch (e) { return json(res, e.code && e.code < 500 ? e.code : 500, { error: e.message }); }
+      catch (e) { return json(res, e.code && e.code < 500 ? e.code : 500, { error: e.message, queue: e.queue || Clip.getQueue() }); }
     }
 
     if (p === '/api/clip/status' && req.method === 'GET') {
-      const job = Clip.getJob(url.searchParams.get('id'));
-      if (!job) return json(res, 404, { error: 'Clip job not found or expired.' });
-      return json(res, 200, job);
+      const id = url.searchParams.get('id');
+      if (!id) return json(res, 200, Clip.getQueue());
+      const job = Clip.getJob(id);
+      if (!job) return json(res, 404, { error: 'Clip job not found or expired.', queue: Clip.getQueue() });
+      return json(res, 200, { ...job, queue: Clip.getQueue() });
     }
 
     if (p === '/api/clip/cancel' && req.method === 'POST') {

@@ -263,24 +263,99 @@ async function probeMedia(filePath) {
   };
 }
 
-function spawnYtdlpDownload(args, job, onPct) {
+
+function parseClock(s) {
+  const p = String(s || '').split(':').map(Number);
+  if (p.some(n => !Number.isFinite(n))) return null;
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  if (p.length === 1) return p[0];
+  return null;
+}
+
+export function formatEta(sec) {
+  if (sec == null || !Number.isFinite(sec)) return '';
+  const t = Math.max(0, Math.round(sec));
+  if (t <= 2) return 'About a few seconds left';
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s2 = t % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `About ${h}:${pad(m)}:${pad(s2)} left` : `About ${m}:${pad(s2)} left`;
+}
+
+function setEta(job, sec) {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) { return; }
+  const v = Math.max(0, sec);
+  job.etaSec = job.etaSec == null ? v : (job.etaSec * 0.6 + v * 0.4);
+}
+
+function estimateEncodeSec(duration, width, height) {
+  const dur = Number(duration) || 20;
+  const px = (Number(width) || 1280) * (Number(height) || 720);
+  const factor = Math.max(0.7, Math.min(6, px / (1280 * 720)));
+  return Math.max(8, dur * factor);
+}
+
+function parseYtdlpProgress(line) {
+  const m = String(line).match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
+  if (!m) return null;
+  const pct = Math.min(100, parseFloat(m[1]));
+  const etaM = String(line).match(/\bETA\s+(Unknown|\d+:\d{2}(?::\d{2})?)/i);
+  const speedM = String(line).match(/\bat\s+(\S+)\s+ETA/i);
+  const etaSec = etaM && !/unknown/i.test(etaM[1]) ? parseClock(etaM[1]) : null;
+  return { pct, etaSec, speed: speedM ? speedM[1] : '' };
+}
+
+function publicProgress(job) {
+  if (!job) return null;
+  return {
+    status: job.status,
+    stage: job.stage || job.status,
+    progress: job.progress || 0,
+    detail: job.detail || '',
+    etaSec: job.etaSec == null ? null : Math.round(job.etaSec),
+    etaText: job.etaSec == null ? '' : formatEta(job.etaSec),
+    speed: job.speed || '',
+    title: job.title ? String(job.title).slice(0, 80) : '',
+  };
+}
+
+export function getQueue() {
+  const job = activeJobId ? jobs.get(activeJobId) : null;
+  if (job && (job.status === 'downloading' || job.status === 'processing')) {
+    return { busy: true, ready: false, job: publicProgress(job) };
+  }
+  return { busy: false, ready: true, job: null };
+}
+
+function spawnYtdlpDownload(args, job, onProg) {
   return new Promise((resolve, reject) => {
     const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     job.proc = proc;
     let errBuf = '';
     let outBuf = '';
+    let errLineBuf = '';
     const handleLine = line => {
-      const m = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
-      if (m) onPct(Math.min(100, parseFloat(m[1])));
+      const p = parseYtdlpProgress(line);
+      if (p) onProg(p);
     };
-    proc.stdout.on('data', chunk => {
-      outBuf += chunk.toString('utf8');
-      const lines = outBuf.split(/\r?\n/);
-      outBuf = lines.pop() || '';
-      for (const l of lines) handleLine(l);
-    });
-    proc.stderr.on('data', chunk => { errBuf += chunk.toString('utf8'); if (errBuf.length > 16000) errBuf = errBuf.slice(-16000); });
-    proc.on('error', err => { job.proc = null; reject(err); });
+    const eat = (chunk, isErr) => {
+      let buf = (isErr ? errLineBuf : outBuf) + chunk.toString('utf8');
+      const lines = buf.split(/\r|\n/);
+      buf = lines.pop() || '';
+      if (isErr) errLineBuf = buf; else outBuf = buf;
+      for (const l of lines) {
+        if (isErr) {
+          errBuf += l + '\n';
+          if (errBuf.length > 16000) errBuf = errBuf.slice(-16000);
+        }
+        handleLine(l);
+      }
+    };
+    proc.stdout.on('data', chunk => eat(chunk, false));
+    proc.stderr.on('data', chunk => eat(chunk, true));
+        proc.on('error', err => { job.proc = null; reject(err); });
     proc.on('close', code => {
       job.proc = null;
       if (job.cancelled) return reject(new Error('Cancelled.'));
@@ -304,7 +379,7 @@ function runFfmpeg(args, job, expectedDur, onPct) {
         const m = l.match(/^out_time_ms=(\d+)/);
         if (m && expectedDur > 0) {
           const sec = Number(m[1]) / 1e6;
-          onPct(Math.min(99, Math.max(0, (sec / expectedDur) * 100)));
+          onPct(Math.min(99, Math.max(0, (sec / expectedDur) * 100)), sec);
         }
       }
     });
@@ -329,8 +404,11 @@ function findRawFile(dir) {
 async function runClipJob(job, { url, startRaw, endRaw }) {
   try {
     job.status = 'downloading';
+    job.stage = 'inspecting';
     job.detail = 'Inspecting video…';
     job.progress = 2;
+    job.etaSec = null;
+    job.speed = '';
 
     const start = parseTime(startRaw) ?? 0;
     const endParsed = parseTime(endRaw);
@@ -341,6 +419,9 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
 
     const fullDur = Number(info.duration) || 0;
     job.title = info.title || 'Video';
+    const picked = pickBestResolution(info);
+    job._estW = picked.width;
+    job._estH = picked.height;
 
     let end = endParsed;
     if (fullDur > 0) {
@@ -364,8 +445,11 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     // Download highest quality available (prefer H.264/AAC on same resolution ties for lossless remux)
     const useSection = !isWhole && fullDur > MAX_WHOLE_SEC && end != null;
 
+    job.stage = 'downloading';
     job.detail = useSection ? 'Downloading selected section in highest quality…' : 'Downloading highest available quality…';
     job.progress = 5;
+    job._dlMax = 0;
+    setEta(job, estimateEncodeSec(targetDur || fullDur, job._estW, job._estH) + 20);
 
     const profiles = [profile, ...ytdlpProfiles(url).filter(p => p.name !== profile.name)];
     const rawTpl = path.join(job.dir, 'raw.%(ext)s');
@@ -383,9 +467,16 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
         url,
       ];
       try {
-        await spawnYtdlpDownload(args, job, pct => {
-          job.progress = Math.round(5 + pct * 0.65);
-          job.detail = `Downloading highest quality… ${Math.round(pct)}%`;
+        await spawnYtdlpDownload(args, job, p => {
+          const pct = p.pct;
+          if (job._dlMax == null || pct >= job._dlMax - 0.5 || pct + 40 < job._dlMax) job._dlMax = Math.max(job._dlMax || 0, pct);
+          const shown = job._dlMax;
+          job.stage = 'downloading';
+          job.progress = Math.round(5 + shown * 0.65);
+          job.speed = p.speed || job.speed || '';
+          const encodeGuess = estimateEncodeSec(targetDur || fullDur, job._estW, job._estH);
+          if (p.etaSec != null) setEta(job, p.etaSec + encodeGuess);
+          job.detail = `Downloading highest quality… ${Math.round(shown)}%`;
         });
         dlOk = true;
         break;
@@ -406,7 +497,21 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     if (rawStat.size > MAX_FILESIZE_BYTES) throw new Error(`Downloaded video is too large (${Math.round(rawStat.size / 1048576)} MB, limit ${Math.round(MAX_FILESIZE_BYTES / 1048576)} MB). Try trimming a shorter clip.`);
 
     job.status = 'processing';
-    job.progress = 72;
+    job.stage = 'encoding';
+    job.progress = 70;
+    job.speed = '';
+    const encodeStarted = Date.now();
+    const applyEncodeProg = (pct, outSec, label) => {
+      job.stage = 'encoding';
+      job.progress = Math.round(70 + pct * 0.30);
+      job.detail = `${label}… ${Math.round(pct)}%`;
+      const wall = (Date.now() - encodeStarted) / 1000;
+      if (outSec > 0.5 && wall > 0.8) {
+        const rate = outSec / wall;
+        job.speed = `${rate.toFixed(1)}×`;
+        if (rate > 0.05) setEta(job, Math.max(0, ((media.duration || targetDur || fullDur || 0) - outSec) / rate));
+      }
+    };
     const media = await probeMedia(rawFile);
     const outFile = path.join(job.dir, 'out.mp4');
 
@@ -415,6 +520,7 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     const aacReady = !media.hasAudio || media.acodec === 'aac';
     if (!needVideoTrim && h264Ready) {
       job.detail = aacReady ? 'Remuxing to fast-start MP4…' : 'Converting audio to AAC MP4…';
+      setEta(job, 8);
       await runFfmpeg([
         '-y', '-i', rawFile,
         '-c:v', 'copy',
@@ -422,14 +528,15 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
         '-movflags', '+faststart',
         '-progress', 'pipe:1', '-nostats',
         outFile,
-      ], job, media.duration || targetDur || fullDur, pct => {
-        job.progress = Math.round(75 + pct * 0.23);
+      ], job, media.duration || targetDur || fullDur, (pct, outSec) => {
+        applyEncodeProg(pct, outSec, aacReady ? 'Remuxing MP4' : 'Converting audio to AAC');
       });
     } else {
       const localStart = needVideoTrim ? start : 0;
       const localDur = needVideoTrim && end != null ? Math.max(0.1, end - start) : 0;
       const threads = (media.width > 1920 || media.height > 1920) ? '1' : '2';
       job.detail = needVideoTrim ? 'Trimming & encoding MP4 (H.264/AAC)…' : 'Converting to MP4 (H.264/AAC)…';
+      setEta(job, estimateEncodeSec(localDur || media.duration || fullDur, media.width, media.height));
 
       const ffArgs = ['-y'];
       if (needVideoTrim && localStart > 5) ffArgs.push('-ss', String((localStart - 5).toFixed(3)));
@@ -451,9 +558,8 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
         outFile,
       );
       const exp = localDur || media.duration || fullDur || 30;
-      await runFfmpeg(ffArgs, job, exp, pct => {
-        job.progress = Math.round(72 + pct * 0.27);
-        job.detail = `${needVideoTrim ? 'Trimming & encoding MP4' : 'Converting to MP4'}… ${Math.round(pct)}%`;
+      await runFfmpeg(ffArgs, job, exp, (pct, outSec) => {
+        applyEncodeProg(pct, outSec, needVideoTrim ? 'Encoding MP4' : 'Converting to MP4');
       });
     }
 
@@ -473,7 +579,10 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     job.duration = outInfo.duration || targetDur || media.duration;
     job.durationText = job.duration ? formatTime(job.duration) : '';
     job.status = 'done';
+    job.stage = 'done';
     job.progress = 100;
+    job.etaSec = 0;
+    job.speed = '';
     job.finishedAt = Date.now();
     const resTag = job.width && job.height ? `${Math.min(job.width, job.height)}p` : (job.height ? `${job.height}p` : '');
     job.detail = `Ready · ${resTag ? `${resTag} · ` : ''}${(job.size / 1048576).toFixed(1)} MB`;
@@ -482,6 +591,8 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     removeDirQuiet(job.dir);
     job.file = null;
     job.status = 'error';
+    job.stage = 'error';
+    job.etaSec = null;
     job.finishedAt = Date.now();
     job.error = e.message || 'Clip failed.';
     job.detail = job.error;
@@ -501,7 +612,8 @@ export async function startClip({ url, start, end }) {
   if (activeJobId) {
     const cur = jobs.get(activeJobId);
     if (cur && (cur.status === 'downloading' || cur.status === 'processing')) {
-      throw Object.assign(new Error('Another video is currently clipping — wait for it to finish (or cancel it).'), { code: 429 });
+      const q = getQueue();
+      throw Object.assign(new Error('Another clip is already in progress. Wait for it to finish, then try again.'), { code: 429, queue: q });
     }
   }
 
@@ -514,8 +626,11 @@ export async function startClip({ url, start, end }) {
     dir,
     url: validUrl,
     status: 'downloading',
+    stage: 'starting',
     progress: 1,
     detail: 'Starting…',
+    etaSec: null,
+    speed: '',
     title: '',
     filename: 'clip.mp4',
     file: null,
@@ -543,8 +658,12 @@ export function getJob(id) {
   return {
     id: job.id,
     status: job.status,
+    stage: job.stage || job.status,
     progress: job.progress,
     detail: job.detail,
+    etaSec: job.etaSec == null ? null : Math.round(job.etaSec),
+    etaText: job.etaSec == null ? '' : formatEta(job.etaSec),
+    speed: job.speed || '',
     title: job.title,
     filename: job.filename,
     size: job.size,

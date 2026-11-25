@@ -346,9 +346,15 @@ html, body { background: #000; }
 .clip-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .clip-actions .btn-strong,
 .clip-url-row .btn-strong { background: rgb(var(--red)); color: #fff; }
-.clip-prog-box { display: flex; flex-direction: column; gap: 6px; }
-.clip-bar { height: 8px; border-radius: 999px; background: #0d1016; border: 1px solid var(--line); overflow: hidden; }
-.clip-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, rgb(var(--red)), #f97316); transition: width .25s ease; }
+.clip-prog-box { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 14px; background: #0d1016; border: 1px solid var(--line); }
+.clip-prog-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.clip-stage { font-weight: 700; font-size: 13.5px; color: #fff; }
+.clip-eta { font-weight: 700; font-size: 13.5px; color: #fdba74; }
+.clip-eta.ready { color: #86efac; font-weight: 600; }
+.clip-bar { height: 12px; border-radius: 999px; background: #16181c; border: 1px solid #3f4650; overflow: hidden; }
+.clip-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, rgb(var(--red)), #f97316); transition: width .35s ease; }
+.clip-bar-fill.active { background-size: 24px 12px; background-image: linear-gradient(90deg, rgb(var(--red)), #f97316, #fbbf24, #f97316, rgb(var(--red))); animation: clip-bar-slide 1.4s linear infinite; }
+@keyframes clip-bar-slide { to { background-position: 24px 0; } }
 .clip-err {
   padding: 10px 12px;
   border-radius: 12px;
