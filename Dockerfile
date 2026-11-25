@@ -1,12 +1,12 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# ffmpeg + python3 + ca-certificates + curl for yt-dlp (zipapp runs on python3; node 20 handles JS challenges).
-# Override YTDLP_URL at build time to pin a specific release, or leave default for latest.
-ARG YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
-RUN apk add --no-cache ffmpeg python3 ca-certificates curl \
-  && curl -fsSL "$YTDLP_URL" -o /usr/local/bin/yt-dlp \
-  && chmod a+rx /usr/local/bin/yt-dlp
+# ffmpeg + python3 + yt-dlp (installed unpacked via pip for fast startup on constrained CPU; pip removed afterwards).
+# Override YTDLP_PKG (e.g. yt-dlp==2026.11.23) at build time to pin a specific version.
+ARG YTDLP_PKG=yt-dlp
+RUN apk add --no-cache ffmpeg python3 py3-pip ca-certificates \
+  && pip3 install --no-cache-dir --break-system-packages -U "$YTDLP_PKG" \
+  && apk del py3-pip
 
 COPY package.json ./
 COPY server ./server

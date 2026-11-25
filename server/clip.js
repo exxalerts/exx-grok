@@ -30,8 +30,10 @@ try {
 
 setInterval(() => sweepJobs(), 5 * 60 * 1000).unref();
 
-export const hasYtdlp = () => new Promise(r => execFile('yt-dlp', ['--version'], { timeout: 5000 }, e => r(!e)));
-export const hasFfmpeg = () => new Promise(r => execFile('ffmpeg', ['-version'], { timeout: 5000 }, e => r(!e)));
+let ytdlpOk = null;
+let ffmpegOk = null;
+export const hasYtdlp = () => ytdlpOk === true ? Promise.resolve(true) : new Promise(r => execFile('yt-dlp', ['--version'], { timeout: 20000 }, e => { if (!e) ytdlpOk = true; r(!e); }));
+export const hasFfmpeg = () => ffmpegOk === true ? Promise.resolve(true) : new Promise(r => execFile('ffmpeg', ['-version'], { timeout: 20000 }, e => { if (!e) ffmpegOk = true; r(!e); }));
 
 export function validateUrl(raw) {
   const s = String(raw || '').trim();
@@ -151,7 +153,7 @@ async function fetchJsonInfo(url) {
   let lastErr = null;
   for (let i = 0; i < profiles.length; i++) {
     try {
-      const { stdout } = await runCapture('yt-dlp', [...profiles[i].args, '-J', url], 40000);
+      const { stdout } = await runCapture('yt-dlp', [...profiles[i].args, '-J', url], 60000);
       const data = JSON.parse(stdout);
       // Handle playlist/multi-entry wrapper gracefully by taking first entry
       const entry = Array.isArray(data.entries) ? data.entries.find(Boolean) : data;
