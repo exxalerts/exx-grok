@@ -97,6 +97,31 @@ h2 { font-size: 17px; margin: 0; } h3 { margin: 0 0 6px; font-size: 17px; } h4 {
 .card .sum { margin-top: 4px; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card .why { margin-top: 5px; font-size: 12px; color: var(--text3); }
 .card .links { margin-top: 6px; font-size: 12px; display: flex; gap: 12px; }
+/* Source / “open on site” links: white text + light outline so they stay readable on dark cards */
+.card .links a,
+.top-card a.small,
+a.trend-view {
+  display: inline-flex;
+  align-items: center;
+  color: #fff;
+  background: rgb(255 255 255 / .1);
+  border: 1px solid rgb(255 255 255 / .8);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.card .links a:hover,
+.top-card a.small:hover,
+a.trend-view:hover,
+.card .links a:focus-visible,
+.top-card a.small:focus-visible,
+a.trend-view:focus-visible {
+  color: #0f172a;
+  background: #fff;
+  border-color: #fff;
+  text-decoration: none;
+}
 .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 
 .editor { margin-top: 10px; border-top: 1px dashed rgb(var(--tone) / .35); padding-top: 10px; }
