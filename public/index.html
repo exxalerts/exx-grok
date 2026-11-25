@@ -70,7 +70,6 @@
         </div>
         <div class="clip-actions">
           <button id="clipGo" type="button" class="btn btn-strong">Prepare MP4</button>
-          <button id="clipCancel" type="button" class="btn btn-ghost" hidden>Cancel</button>
           <span class="muted small">Leave Start and End as-is to download the whole video. Max 15m whole / 10m clip (350 MB). One clip at a time.</span>
         </div>
       </div>
@@ -78,7 +77,10 @@
       <div id="clipProgBox" class="clip-prog-box" aria-live="polite">
         <div class="clip-prog-row">
           <span id="clipStage" class="clip-stage">Ready for next clip</span>
-          <span id="clipEta" class="clip-eta"></span>
+          <div class="clip-prog-actions">
+            <span id="clipEta" class="clip-eta"></span>
+            <button id="clipCancel" type="button" class="btn clip-cancel" hidden>Cancel</button>
+          </div>
         </div>
         <div class="clip-bar" id="clipBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Clip progress">
           <div id="clipBarFill" class="clip-bar-fill"></div>

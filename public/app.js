@@ -663,11 +663,15 @@ async function tickClipProgress() {
         paintClipBar(100, { stage: 'Done', eta: 'Ready for next clip', detail: extra, ready: true });
         C.jobId = null;
         if ($('#clipView').hidden) clipStopPoll();
-      } else if (j.status === 'error') {
+      } else if (j.status === 'error' || j.status === 'cancelled') {
         clipSetOwnBusy(false);
         C.jobId = null;
-        paintClipBar(j.progress || 0, { stage: 'Failed', ready: true, detail: j.error || 'Clip failed.' });
-        clipShowErr(j.error || 'Clip failed.');
+        if (j.status === 'cancelled') {
+          paintClipBar(0, { ready: true, stage: 'Ready for next clip', eta: 'Ready for next clip', detail: 'Cancelled. Ready for next clip.' });
+        } else {
+          paintClipBar(j.progress || 0, { stage: 'Failed', ready: true, detail: j.error || 'Clip failed.' });
+          clipShowErr(j.error || 'Clip failed.');
+        }
         if ($('#clipView').hidden) clipStopPoll();
       }
     } else {
@@ -799,13 +803,16 @@ $('#clipGo').addEventListener('click', async () => {
 });
 
 $('#clipCancel').addEventListener('click', async () => {
-  if (!C.jobId) return;
+  if (!C.jobId || !C.ownBusy) return;
   const id = C.jobId;
+  $('#clipCancel').disabled = true;
   await api('/api/clip/cancel', { method: 'POST', body: { id } }).catch(() => {});
   clipSetOwnBusy(false);
   C.jobId = null;
-  paintClipBar(0, { ready: true, stage: 'Ready for next clip', detail: 'Cancelled.' });
-  clipShowErr('Cancelled.');
+  $('#clipCancel').disabled = false;
+  $('#clipDone').hidden = true;
+  clipShowErr('');
+  paintClipBar(0, { ready: true, stage: 'Ready for next clip', eta: 'Ready for next clip', detail: 'Cancelled. Ready for next clip.' });
   if ($('#clipView').hidden) clipStopPoll();
 });
 

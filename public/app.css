@@ -347,9 +347,19 @@ html, body { background: #000; }
 .clip-actions .btn-strong,
 .clip-url-row .btn-strong { background: rgb(var(--red)); color: #fff; }
 .clip-prog-box { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 14px; background: #0d1016; border: 1px solid var(--line); }
-.clip-prog-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.clip-prog-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.clip-prog-actions { display: inline-flex; align-items: center; gap: 10px; }
 .clip-stage { font-weight: 700; font-size: 13.5px; color: #fff; }
 .clip-eta { font-weight: 700; font-size: 13.5px; color: #fdba74; }
+.clip-cancel {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #fff;
+  font-weight: 700;
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+.clip-cancel:hover { background: #fecaca; border-color: #f87171; color: #7f1d1d; }
 .clip-eta.ready { color: #86efac; font-weight: 600; }
 .clip-bar { height: 12px; border-radius: 999px; background: #16181c; border: 1px solid #3f4650; overflow: hidden; }
 .clip-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, rgb(var(--red)), #f97316); transition: width .35s ease; }

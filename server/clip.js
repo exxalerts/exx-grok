@@ -331,7 +331,7 @@ export function getQueue() {
 
 function spawnYtdlpDownload(args, job, onProg) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     job.proc = proc;
     let errBuf = '';
     let outBuf = '';
@@ -367,7 +367,7 @@ function spawnYtdlpDownload(args, job, onProg) {
 
 function runFfmpeg(args, job, expectedDur, onPct) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     job.proc = proc;
     let errBuf = '';
     let outBuf = '';
@@ -588,6 +588,11 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     job.detail = `Ready · ${resTag ? `${resTag} · ` : ''}${(job.size / 1048576).toFixed(1)} MB`;
     sweepJobs();
   } catch (e) {
+    if (job.cancelled || job.status === 'cancelled') {
+      removeDirQuiet(job.dir);
+      if (activeJobId === job.id) activeJobId = null;
+      return;
+    }
     removeDirQuiet(job.dir);
     job.file = null;
     job.status = 'error';
@@ -677,13 +682,36 @@ export function getJob(id) {
   };
 }
 
+function killProc(proc) {
+  if (!proc?.pid) return;
+  try { process.kill(-proc.pid, 'SIGTERM'); } catch {
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  }
+  const pid = proc.pid;
+  setTimeout(() => {
+    try { process.kill(-pid, 'SIGKILL'); } catch {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+    }
+  }, 800).unref();
+}
+
 export function cancelJob(id) {
   const job = jobs.get(String(id || ''));
   if (!job) return false;
+  if (job.status === 'cancelled' || job.status === 'done' || job.status === 'error') return job.status === 'cancelled';
   job.cancelled = true;
-  if (job.proc) {
-    try { job.proc.kill('SIGTERM'); } catch { /* ignore */ }
-  }
+  job.status = 'cancelled';
+  job.stage = 'cancelled';
+  job.detail = 'Cancelled.';
+  job.etaSec = null;
+  job.speed = '';
+  job.progress = 0;
+  job.finishedAt = Date.now();
+  killProc(job.proc);
+  job.proc = null;
+  removeDirQuiet(job.dir);
+  job.file = null;
+  if (activeJobId === job.id) activeJobId = null;
   return true;
 }
 
