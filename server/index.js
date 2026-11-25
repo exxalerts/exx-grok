@@ -23,14 +23,19 @@ const state = {
   national: [], nationalStatus: {}, local: [], localMode: has.ai ? 'ai' : 'keywords', localError: '', political: [], politicalStatus: {}, politicalError: '',
   x: [], xErrors: {}, xError: '', top: null, topError: '', topScanned: 0,
   trending: null, trendError: '',
-  updated: { news: 0, x: 0, top: 0, trends: 0 }, refreshing: false,
+  updated: { news: 0, national: 0, local: 0, political: 0, x: 0, top: 0, trends: 0 }, refreshing: false, refreshingCols: {},
 };
 try { const saved = JSON.parse(fs.readFileSync(path.join(DATA, 'local.json'), 'utf8')); if (Array.isArray(saved)) state.local = saved.filter(i => Date.now() - i.ts < 36 * 3600e3); } catch { /* first run */ }
 
-async function refreshNews() {
+async function refreshNational() {
   const t0 = Date.now();
   const nat = await fetchNational();
   state.national = nat.items; state.nationalStatus = nat.status;
+  state.updated.national = state.updated.news = Date.now();
+  log(`national refreshed: ${state.national.length} (${Date.now() - t0} ms)`);
+}
+async function refreshLocal() {
+  const t0 = Date.now();
   try {
     const cands = await fetchLocalCandidates();
     const known = new Set(state.local.map(i => i.title.toLowerCase()));
@@ -47,15 +52,18 @@ async function refreshNews() {
         .map(c => ({ ...c, why: 'Keyword match: ' + (/video|bodycam|911/i.test(c.title) ? 'footage hook' : 'crime/incident hook') + (/\b(Florida|Texas|California|county|city)\b/i.test(c.title) ? ' + place tag' : '') }));
     }
     state.local = [...picks, ...state.local].sort((a, b) => b.ts - a.ts).slice(0, 40);
-    // Lead photos for Local cards (Google News links can't be opened from Render): new picks first, then older ones not tried in 2h.
     const needPic = state.local.filter(i => !i.image && (!i.enriched || Date.now() - i.enriched > 2 * 3600e3)).slice(0, 16);
-    if (needPic.length) { // in the background so Refresh stays fast; cards ask /api/meta, which waits for the same work
+    if (needPic.length) {
       const t1 = Date.now();
       enrichLocal(needPic).then(() => { fs.writeFileSync(path.join(DATA, 'local.json'), JSON.stringify(state.local)); log(`local photos: ${state.local.filter(i => i.image).length}/${state.local.length} have a photo (${Date.now() - t1} ms)`); }).catch(() => {});
     }
     fs.writeFileSync(path.join(DATA, 'local.json'), JSON.stringify(state.local));
   } catch (e) { state.localError = 'Local search failed: ' + e.message; }
-  state.updated.news = Date.now();
+  state.updated.local = state.updated.news = Date.now();
+  log(`local refreshed: ${state.local.length} (${Date.now() - t0} ms)`);
+}
+async function refreshPolitical() {
+  const t0 = Date.now();
   try {
     const pol = await fetchPolitical({ excludeTitles: state.national.map(i => i.title) });
     state.political = pol.items; state.politicalStatus = pol.status; state.politicalError = '';
@@ -65,6 +73,12 @@ async function refreshNews() {
       enrichLocal(needPic).then(() => log(`political photos: ${state.political.filter(i => i.image).length}/${state.political.length} have a photo (${Date.now() - t1} ms)`)).catch(() => {});
     }
   } catch (e) { state.politicalError = 'Political feed failed: ' + e.message; }
+  state.updated.political = state.updated.news = Date.now();
+  log(`political refreshed: ${state.political.length} (${Date.now() - t0} ms)`);
+}
+async function refreshNews() {
+  const t0 = Date.now();
+  await Promise.allSettled([refreshNational(), refreshLocal(), refreshPolitical()]);
   log(`news refreshed: ${state.national.length} national, ${state.local.length} local, ${state.political.length} political (${Date.now() - t0} ms)`);
 }
 
@@ -96,6 +110,21 @@ async function refreshTrends() {
     state.updated.trends = Date.now();
     log('trends refresh failed', e.message);
   }
+}
+
+const COL_REFRESH = {
+  national: refreshNational, local: refreshLocal, political: refreshPolitical,
+  x: refreshX, top: refreshTop, trends: refreshTrends,
+};
+const colRuns = {};
+async function refreshCol(col) {
+  const fn = COL_REFRESH[col];
+  if (!fn) throw new Error('unknown column');
+  if (colRuns[col]) return colRuns[col];
+  state.refreshingCols[col] = true;
+  const run = (async () => { await fn(); })();
+  colRuns[col] = run;
+  try { await run; } finally { delete colRuns[col]; state.refreshingCols[col] = false; }
 }
 
 let refreshRun = null;
@@ -222,7 +251,17 @@ async function route(req, res) {
       try { const mark = await Marks.set(id, !!posted, title); return json(res, 200, { id, posted: !!mark, mark }); }
       catch (e) { return json(res, 502, { error: 'Could not save the mark: ' + e.message }); }
     }
-    if (p === '/api/refresh' && req.method === 'POST') { await refreshAll(true); return json(res, 200, { ok: true, updated: state.updated }); }
+    if (p === '/api/refresh' && req.method === 'POST') {
+      const body = await readJson(req).catch(() => ({}));
+      const col = String(url.searchParams.get('col') || body.col || '').toLowerCase();
+      if (col) {
+        if (!COL_REFRESH[col]) return json(res, 400, { error: 'unknown column' });
+        await refreshCol(col);
+        return json(res, 200, { ok: true, col, updated: state.updated });
+      }
+      await refreshAll(true);
+      return json(res, 200, { ok: true, updated: state.updated });
+    }
 
     if (p === '/api/meta') {
       const u = url.searchParams.get('url') || '';

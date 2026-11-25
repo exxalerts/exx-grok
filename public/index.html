@@ -19,7 +19,6 @@
     <div class="bar-right">
       <span id="keys" class="keys" title="Which keys are set up"></span>
       <span id="updated" class="muted small"></span>
-      <button id="refresh" class="btn btn-ghost" title="Re-fetch National, Local, Political, X and Trending now (R)"><span class="ico">↻</span> <span class="txt">Refresh</span></button>
       <button id="install" class="btn btn-ghost" hidden title="Install as a Chrome app">⤓ Install app</button>
       <button id="help" class="btn btn-ghost" title="Keyboard shortcuts (?)">?</button>
       <a id="logout" class="btn btn-ghost" href="/logout" hidden>Log out</a>
@@ -30,7 +29,7 @@
 
   <main>
     <section class="top5">
-      <div class="section-head"><h2>Top 5 posts this week</h2><span id="topNote" class="muted small"></span></div>
+      <div class="section-head"><h2>Top 5 posts this week</h2><span id="topNote" class="muted small"></span><span class="col-head-right"><button type="button" class="col-refresh" data-col="top" title="Refresh Top 5" aria-label="Refresh Top 5"><span class="ico">↻</span></button><span class="count" id="n-top">5</span></span></div>
       <div id="top" class="top-grid"></div>
     </section>
 
@@ -40,23 +39,23 @@
 
     <section class="columns">
       <div class="col" data-tone="nat" id="col-nat">
-        <div class="col-head"><span>National news</span><span class="count" id="n-nat">0</span></div>
+        <div class="col-head"><span>National news</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="national" title="Refresh National news" aria-label="Refresh National news"><span class="ico">↻</span></button><span class="count" id="n-nat">0</span></span></div>
         <div class="col-msg" id="m-nat"></div>
         <div class="col-body" id="b-nat" tabindex="-1"></div>
       </div>
       <div class="col" data-tone="loc" id="col-loc">
-        <div class="col-head"><span>Local stories</span><span class="count" id="n-loc">0</span></div>
+        <div class="col-head"><span>Local stories</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="local" title="Refresh Local stories" aria-label="Refresh Local stories"><span class="ico">↻</span></button><span class="count" id="n-loc">0</span></span></div>
         <div class="col-msg" id="m-loc"></div>
         <div class="col-body" id="b-loc" tabindex="-1"></div>
       </div>
       <div class="col" data-tone="pol" id="col-pol">
-        <div class="col-head"><span>Political news</span><span class="count" id="n-pol">0</span></div>
+        <div class="col-head"><span>Political news</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="political" title="Refresh Political news" aria-label="Refresh Political news"><span class="ico">↻</span></button><span class="count" id="n-pol">0</span></span></div>
         <div class="col-msg" id="m-pol"></div>
         <div class="col-body" id="b-pol" tabindex="-1"></div>
       </div>
 
       <div class="col" data-tone="x" id="col-x">
-        <div class="col-head"><span>X feed</span><span class="count" id="n-x">0</span></div>
+        <div class="col-head"><span>X feed</span><span class="col-head-right"><button type="button" class="col-refresh" data-col="x" title="Refresh X feed" aria-label="Refresh X feed"><span class="ico">↻</span></button><span class="count" id="n-x">0</span></span></div>
         <div class="col-msg" id="m-x"></div>
         <div class="col-body" id="b-x" tabindex="-1"></div>
       </div>
@@ -66,6 +65,7 @@
       <div class="section-head">
         <h2>Trending now</h2>
         <span id="trendUpdated" class="muted small"></span>
+        <span class="col-head-right"><button type="button" class="col-refresh" data-col="trends" title="Refresh Trending" aria-label="Refresh Trending"><span class="ico">↻</span></button></span>
       </div>
       <div class="trend-blocks">
         <section class="trend-block" data-tone="x" data-platform="x" id="col-trend-x">
@@ -143,7 +143,7 @@
       <h3>Keyboard shortcuts</h3>
       <table class="keys-table">
         <tr><td><kbd>/</kbd></td><td>Search / filter</td></tr>
-        <tr><td><kbd>R</kbd></td><td>Refresh now</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Refresh the column you are in</td></tr>
         <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></td><td>Jump to National / Local / Political / X feed</td></tr>
         <tr><td><kbd>J</kbd> <kbd>K</kbd></td><td>Next / previous card</td></tr>
         <tr><td><kbd>S</kbd> <kbd>L</kbd></td><td>Generate short / long post for the selected card</td></tr>
