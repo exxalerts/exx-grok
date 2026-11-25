@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { cfg, has, envFileFound, ROOT } from './env.js';
-import { fetchNational, fetchLocalCandidates, articleMeta, findCoverage, textChars, get, enrichLocal } from './feeds.js';
+import { fetchNational, fetchLocalCandidates, fetchPolitical, articleMeta, findCoverage, textChars, get, enrichLocal } from './feeds.js';
 import * as X from './xapi.js';
 import * as AI from './ai.js';
 import { TOP_SNAPSHOT } from './snapshot.js';
@@ -20,7 +20,7 @@ const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 
 // ---------------- state ----------------
 const state = {
-  national: [], nationalStatus: {}, local: [], localMode: has.ai ? 'ai' : 'keywords', localError: '',
+  national: [], nationalStatus: {}, local: [], localMode: has.ai ? 'ai' : 'keywords', localError: '', political: [], politicalStatus: {}, politicalError: '',
   x: [], xErrors: {}, xError: '', top: null, topError: '', topScanned: 0,
   trending: null, trendError: '',
   updated: { news: 0, x: 0, top: 0, trends: 0 }, refreshing: false,
@@ -56,7 +56,16 @@ async function refreshNews() {
     fs.writeFileSync(path.join(DATA, 'local.json'), JSON.stringify(state.local));
   } catch (e) { state.localError = 'Local search failed: ' + e.message; }
   state.updated.news = Date.now();
-  log(`news refreshed: ${state.national.length} national, ${state.local.length} local (${Date.now() - t0} ms)`);
+  try {
+    const pol = await fetchPolitical({ excludeTitles: state.national.map(i => i.title) });
+    state.political = pol.items; state.politicalStatus = pol.status; state.politicalError = '';
+    const needPic = state.political.filter(i => !i.image && (!i.enriched || Date.now() - i.enriched > 2 * 3600e3)).slice(0, 16);
+    if (needPic.length) {
+      const t1 = Date.now();
+      enrichLocal(needPic).then(() => log(`political photos: ${state.political.filter(i => i.image).length}/${state.political.length} have a photo (${Date.now() - t1} ms)`)).catch(() => {});
+    }
+  } catch (e) { state.politicalError = 'Political feed failed: ' + e.message; }
+  log(`news refreshed: ${state.national.length} national, ${state.local.length} local, ${state.political.length} political (${Date.now() - t0} ms)`);
 }
 
 async function refreshX() {
@@ -194,6 +203,7 @@ async function route(req, res) {
       return json(res, 200, {
         national: state.national, nationalStatus: state.nationalStatus,
         local: state.local, localMode: state.localMode, localError: state.localError,
+        political: state.political, politicalStatus: state.politicalStatus, politicalError: state.politicalError,
         x: state.x, xError: state.xError, xErrors: state.xErrors,
         top: state.top || TOP_SNAPSHOT, topLive: !!state.top, topError: state.topError, topScanned: state.topScanned,
         trending: state.trending, trendError: state.trendError,
@@ -217,7 +227,7 @@ async function route(req, res) {
     if (p === '/api/meta') {
       const u = url.searchParams.get('url') || '';
       if (!/^https?:\/\//.test(u)) return json(res, 400, { error: 'bad url' });
-      const li = state.local.find(i => i.url === u || i.pubUrl === u);
+      const li = [...state.local, ...state.political].find(i => i.url === u || i.pubUrl === u);
       if (li) {
         if (!li.image && (!li.enriched || Date.now() - li.enriched > 2 * 3600e3 || picJobs.has(li.id))) {
           if (!picJobs.has(li.id)) picJobs.set(li.id, enrichLocal([li]).finally(() => picJobs.delete(li.id)));

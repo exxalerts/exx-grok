@@ -16,6 +16,48 @@ export const NATIONAL_FEEDS = {
 };
 const NATIONAL_NAMES = ['fox news', 'cnn', 'abc news', 'nbc news', 'the independent', 'axios', 'the hill', 'associated press', 'ap news'];
 
+// Strictly political US news: dedicated politics sections (not general news desks).
+export const POLITICAL_FEEDS = {
+  'The Hill': 'https://thehill.com/homenews/feed/',
+  'Fox Politics': 'https://moxie.foxnews.com/google-publisher/politics.xml',
+  'NBC Politics': 'https://feeds.nbcnews.com/nbcnews/public/politics',
+  'ABC Politics': 'https://abcnews.go.com/abcnews/politicsheadlines',
+  'CBS Politics': 'https://www.cbsnews.com/latest/rss/politics',
+  'Washington Post': 'https://feeds.washingtonpost.com/rss/politics',
+  'NPR Politics': 'https://feeds.npr.org/1014/rss.xml',
+  'Associated Press': 'https://news.google.com/rss/search?q=site:apnews.com+(politics+OR+election+OR+congress+OR+%22white+house%22+OR+senate+OR+house)+when:12h&hl=en-US&gl=US&ceid=US:en',
+};
+// Crime / weather / sports / entertainment / lifestyle, plus opinion/commentary labels.
+const POL_SKIP = /\b(opinion|op-ed|editorial|commentary|analysis:|column:|weather|forecast|hurricane|tornado|sports?|nfl|nba|mlb|nhl|soccer|football game|entertainment|hollywood|celebrity|box office|oscars|grammys|album|movie review|crime blotter|mugshot|bodycam|road rage|dog attack|alligator)\b/i;
+const POL_KEEP = /\b(trump|biden|obama|harris|vance|newsom|desantis|schumer|jeffries|mcconnell|johnson|pelosi|congress|senate|senator|house|representative|gop|republican|democrat|democratic|white house|oval office|capitol|election|elect(ed|s|ing)?|campaign|primary|ballot|vote[rs]?|polling|impeach|filibuster|supreme court|scotus|justice department|doj|attorney general|cabinet|governor|mayor|legislation|bill|veto|pardon|inauguration|midterm|presidency|presidential|politic)\b/i;
+
+export async function fetchPolitical({ hours = 18, max = 40, excludeTitles = [] } = {}) {
+  const cut = Date.now() - hours * 3600e3;
+  const taken = new Set(excludeTitles.map(t => String(t).toLowerCase().replace(/\s+/g, ' ').trim()));
+  const all = [], status = {};
+  await Promise.all(Object.entries(POLITICAL_FEEDS).map(async ([src, feed]) => {
+    try {
+      const r = await get(feed);
+      status[src] = { ok: r.ok, status: r.status };
+      if (!r.ok) return;
+      for (const i of parseRss(r.data)) {
+        if (i.ts < cut || i.ts > Date.now() + 10 * 60e3) continue;
+        let title = i.title.replace(/\s+-\s+[^-]+$/, '');
+        if (POL_SKIP.test(title) || !POL_KEEP.test(title)) continue;
+        if (/election live results/i.test(title) || title.split(/\s+/).length < 5) continue;
+        const key = title.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (taken.has(key)) continue;
+        taken.add(key);
+        const url = i.link;
+        all.push({ id: idOf('pol|' + src, url), kind: 'political', src, title, summary: i.desc || '', url, ts: i.ts, image: i.image || '', pubUrl: /news\.google\.com/.test(url) ? '' : url });
+      }
+    } catch (e) { status[src] = { ok: false, status: 0, error: String(e.message || e) }; }
+  }));
+  const out = all.sort((a, b) => b.ts - a.ts).slice(0, max);
+  return { items: out, status };
+}
+
+
 // Searches that surface the kind of local stories that do well on @EXXAlerts
 // (police/bodycam/911, bizarre crime, viral local incidents, place-tagged hooks).
 export const LOCAL_QUERIES = [

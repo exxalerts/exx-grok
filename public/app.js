@@ -5,9 +5,10 @@ const $ = s => document.querySelector(s);
 const SRC_RGB = {
   'Fox News': '29 78 216', 'CNN': '220 38 38', 'ABC News': '234 88 12', 'NBC News': '147 51 234', 'The Independent': '225 29 72',
   'Axios': '13 148 136', 'The Hill': '2 132 199', 'Associated Press': '202 138 4',
+  'Fox Politics': '29 78 216', 'NBC Politics': '147 51 234', 'ABC Politics': '234 88 12', 'CBS Politics': '1 80 170', 'Washington Post': '15 23 42', 'NPR Politics': '198 40 40',
   '@EricLDaugh': '59 130 246', '@LeadingReport': '234 88 12', '@CollinRugg': '16 185 129', '@Breaking911': '220 38 38', '@NickSortor': '168 85 247', '@nicksortor': '168 85 247',
 };
-const TONE = { nat: '37 99 235', loc: '22 163 74', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
+const TONE = { nat: '37 99 235', loc: '22 163 74', pol: '124 58 237', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
 const NAT_SOURCES = ['All', 'Fox News', 'CNN', 'ABC News', 'NBC News', 'The Independent', 'Axios', 'The Hill', 'Associated Press'];
 
 const S = { posted: {}, status: null, feeds: null, q: '', natSrc: 'All', drafts: new Map(), cards: new Map(), sel: null, lastUpdated: 0 };
@@ -166,11 +167,14 @@ function renderColumns() {
   const f = S.feeds; if (!f) return;
   const nat = f.national.filter(i => (S.natSrc === 'All' || i.src === S.natSrc) && matches(i));
   const loc = f.local.filter(matches);
+  const pol = (f.political || []).filter(matches);
   const xf = f.x.filter(matches);
-  fill('nat', nat); fill('loc', loc); fill('x', xf);
+  fill('nat', nat); fill('loc', loc); fill('pol', pol); fill('x', xf);
   const down = Object.entries(f.nationalStatus || {}).filter(([, v]) => !v.ok).map(([k]) => k);
   $('#m-nat').textContent = down.length ? `Couldn't reach: ${down.join(', ')}. They'll be retried on the next refresh.` : '';
   $('#m-loc').textContent = f.localError || (f.localMode === 'keywords' ? 'Picked by keywords. Add an AI key for smarter picks based on what does well on your account.' : '');
+  const pdown = Object.entries(f.politicalStatus || {}).filter(([, v]) => !v.ok).map(([k]) => k);
+  $('#m-pol').textContent = f.politicalError || (pdown.length ? `Couldn't reach: ${pdown.join(', ')}. They'll be retried on the next refresh.` : '');
   const s = S.status;
   $('#m-x').textContent = f.xError === 'NO_KEYS' ? 'Add your X API keys to .env to load posts from ' + s.accounts.map(a => '@' + a).join(', ') + '.'
     : f.xError ? 'X feed error: ' + f.xError : Object.keys(f.xErrors || {}).length ? 'Some accounts failed: ' + Object.entries(f.xErrors).map(([k, v]) => `@${k} (${v})`).join('; ') : '';
@@ -439,7 +443,7 @@ document.addEventListener('keydown', e => {
   if (k === '/') { e.preventDefault(); $('#q').focus(); }
   else if (k === 'r') refreshNow();
   else if (k === '?') $('#helpDlg').showModal();
-  else if (['1', '2', '3'].includes(k)) { const col = ['nat', 'loc', 'x'][+k - 1]; const first = $('#b-' + col + ' .card'); $('#col-' + col).scrollIntoView({ behavior: 'smooth', block: 'start' }); if (first) select(first.dataset.id); }
+  else if (['1', '2', '3', '4'].includes(k)) { const col = ['nat', 'loc', 'pol', 'x'][+k - 1]; const first = $('#b-' + col + ' .card'); $('#col-' + col).scrollIntoView({ behavior: 'smooth', block: 'start' }); if (first) select(first.dataset.id); }
   else if (k === 'j') move(1); else if (k === 'k') move(-1);
   else if ((k === 's' || k === 'l') && S.sel) generate(S.sel, k === 's' ? 'short' : 'long');
   else if (k === 'v' && S.sel) { const d = draftOf(S.sel); openVideo(S.cards.get(S.sel).item, d, { api, toast, imgUrl, setMedia: f => setMedia(S.sel, f), status: S.status }); }
@@ -457,7 +461,7 @@ window.addEventListener('appinstalled', () => { $('#install').hidden = true; toa
 
 // ---------- boot ----------
 async function boot() {
-  for (const col of ['nat', 'loc', 'x']) $('#b-' + col).replaceChildren(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
+  for (const col of ['nat', 'loc', 'pol', 'x']) $('#b-' + col).replaceChildren(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
   for (const plat of TREND_PLATFORMS) $('#b-trend-' + plat)?.replaceChildren(h('div', { class: 'trend-empty muted' }, 'Loading…'));
   renderChips();
   try { S.status = await api('/api/status'); renderStatus(); }
