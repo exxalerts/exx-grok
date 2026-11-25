@@ -157,8 +157,8 @@ export function loginPage({ error = '', next = '/' } = {}) {
     p { color: #8b9196; font-size: 14px; margin: 0 0 20px; line-height: 1.45; }
     label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
     input[type=password] { width: 100%; padding: 10px 14px; border-radius: 999px; border: 1px solid #2f3336; background: #000; color: #fff; font: inherit; outline: none; }
-    input[type=password]:focus { border-color: rgb(37 99 235); box-shadow: 0 0 0 3px rgb(37 99 235 / .3); }
-    button { margin-top: 16px; width: 100%; cursor: pointer; border: 0; border-radius: 999px; padding: 10px 14px; font: inherit; font-weight: 700; background: rgb(37 99 235); color: #fff; }
+    input[type=password]:focus { border-color: rgb(11 42 91); box-shadow: 0 0 0 3px rgb(11 42 91 / .3); }
+    button { margin-top: 16px; width: 100%; cursor: pointer; border: 0; border-radius: 999px; padding: 10px 14px; font: inherit; font-weight: 700; background: rgb(11 42 91); color: #fff; }
     button:hover { filter: brightness(1.08); }
     .err { background: rgb(220 38 38 / .14); border: 1px solid rgb(220 38 38 / .45); color: #fecaca; padding: 8px 12px; border-radius: 12px; font-size: 13px; margin-bottom: 14px; }
   </style>
