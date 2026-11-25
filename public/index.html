@@ -90,13 +90,15 @@
 
       <div id="clipErr" class="clip-err small" hidden></div>
 
-      <div id="clipDone" class="clip-done" hidden>
-        <div class="clip-done-info">
-          <div id="clipDoneName" class="clip-done-name"></div>
-          <div id="clipDoneMeta" class="small muted"></div>
+      <section id="clipReadyBox" class="clip-ready" aria-labelledby="clipReadyTitle">
+        <div class="clip-ready-head">
+          <h3 id="clipReadyTitle">Ready to download</h3>
+          <label class="clip-auto"><input type="checkbox" id="clipAutoDl" checked> Automatically start download when a clip is ready</label>
         </div>
-        <a id="clipDownload" class="btn btn-strong clip-dl" href="#" download>⤓ Download MP4</a>
-      </div>
+        <p class="muted small">Each file saves as an MP4 in your Chrome Downloads folder. Clips stay here for about 1 hour so you can download them again before they expire.</p>
+        <div id="clipReadyList" class="clip-ready-list"></div>
+        <p id="clipReadyEmpty" class="muted small">No clips ready yet. Prepare an MP4 and it will show up here.</p>
+      </section>
     </div>
   </section>
 

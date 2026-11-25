@@ -371,14 +371,20 @@ async function route(req, res) {
       return json(res, 200, { ok: Clip.cancelJob(id) });
     }
 
+    if (p === '/api/clip/ready' && req.method === 'GET') {
+      return json(res, 200, Clip.listReady());
+    }
+
     if (p === '/api/clip/download' && req.method === 'GET') {
       const dl = Clip.openDownload(url.searchParams.get('id'));
       if (!dl) return json(res, 404, { error: 'Clip file expired or not ready.' });
-      const encName = encodeURIComponent(dl.filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+      const rawName = String(dl.filename || 'clip.mp4');
+      const asciiName = (rawName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '') || 'clip.mp4');
+      const encName = encodeURIComponent(rawName).replace(/['()]/g, escape).replace(/\*/g, '%2A');
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
         'Content-Length': dl.size,
-        'Content-Disposition': `attachment; filename="${dl.filename}"; filename*=UTF-8''${encName}`,
+        'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encName}`,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
       });

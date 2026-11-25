@@ -12,8 +12,7 @@ export const MAX_WHOLE_SEC = 15 * 60; // 15 min cap for full-video downloads
 export const MAX_CLIP_SEC = 10 * 60;  // 10 min cap for trimmed clips
 export const MAX_FILESIZE_BYTES = 350 * 1024 * 1024; // 350 MB cap (Render free disk/RAM friendly)
 export const MAX_CACHE_BYTES = 350 * 1024 * 1024;
-export const JOB_TTL_MS = 60 * 60 * 1000; // 1 hour hard TTL
-export const POST_DL_TTL_MS = 2 * 60 * 1000; // free disk 2 min after download finishes
+export const JOB_TTL_MS = 60 * 60 * 1000; // listed clips stay ~1 hour, even after download
 
 fs.mkdirSync(CLIP_DIR, { recursive: true });
 fs.mkdirSync(YTDLP_CACHE, { recursive: true });
@@ -21,14 +20,86 @@ fs.mkdirSync(YTDLP_CACHE, { recursive: true });
 const jobs = new Map();
 let activeJobId = null;
 
-// Clean stale leftovers from prior runs on startup
-try {
-  for (const name of fs.readdirSync(CLIP_DIR)) {
-    fs.rmSync(path.join(CLIP_DIR, name), { recursive: true, force: true });
-  }
-} catch { /* ignore */ }
+const INDEX_FILE = path.join(CLIP_DIR, 'index.json');
 
-setInterval(() => sweepJobs(), 5 * 60 * 1000).unref();
+function resolutionOf(job) {
+  return (job.width && job.height) ? `${Math.min(job.width, job.height)}p` : (job.height ? `${job.height}p` : '');
+}
+
+export function formatRemaining(ms) {
+  const t = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  if (t <= 0) return 'Expiring now';
+  if (t < 60) return `${t}s left`;
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const sec = t % 60;
+  if (h > 0) return `${h}h ${m}m left`;
+  return sec ? `${m}m ${sec}s left` : `${m}m left`;
+}
+
+function persistIndex() {
+  try {
+    const rows = [...jobs.values()]
+      .filter(j => j.status === 'done' && j.file && fs.existsSync(j.file))
+      .map(j => ({
+        id: j.id, dir: j.dir, file: j.file, url: j.url || '',
+        title: j.title, filename: j.filename, thumbnail: j.thumbnail || '',
+        width: j.width, height: j.height, size: j.size,
+        duration: j.duration, durationText: j.durationText,
+        createdAt: j.createdAt, finishedAt: j.finishedAt,
+      }));
+    fs.writeFileSync(INDEX_FILE, JSON.stringify(rows));
+    for (const j of jobs.values()) {
+      if (j.status === 'done' && j.dir && fs.existsSync(j.dir)) {
+        try { fs.writeFileSync(path.join(j.dir, 'meta.json'), JSON.stringify(rows.find(r => r.id === j.id) || {})); } catch { /* ignore */ }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+function restoreReadyClips() {
+  const seen = new Set();
+  const loadRow = (row) => {
+    if (!row?.id || !row.file || !fs.existsSync(row.file) || seen.has(row.id)) return;
+    if (row.finishedAt && Date.now() - row.finishedAt > JOB_TTL_MS) {
+      removeDirQuiet(row.dir);
+      return;
+    }
+    seen.add(row.id);
+    jobs.set(row.id, {
+      id: row.id, dir: row.dir, url: row.url || '', file: row.file,
+      status: 'done', stage: 'done', progress: 100, detail: 'Ready',
+      title: row.title || 'Video', filename: row.filename || 'clip.mp4',
+      thumbnail: row.thumbnail || '',
+      width: row.width || 0, height: row.height || 0, size: row.size || (fs.statSync(row.file).size),
+      duration: row.duration || 0, durationText: row.durationText || '',
+      createdAt: row.createdAt || row.finishedAt || Date.now(),
+      finishedAt: row.finishedAt || Date.now(),
+      downloadedAt: 0, cancelled: false, proc: null, etaSec: 0, speed: '', error: '',
+    });
+  };
+  try {
+    const rows = JSON.parse(fs.readFileSync(INDEX_FILE, 'utf8'));
+    if (Array.isArray(rows)) rows.forEach(loadRow);
+  } catch { /* first run or empty */ }
+  try {
+    for (const name of fs.readdirSync(CLIP_DIR)) {
+      if (name === 'index.json') continue;
+      const dir = path.join(CLIP_DIR, name);
+      const file = path.join(dir, 'out.mp4');
+      const metaFile = path.join(dir, 'meta.json');
+      if (!fs.existsSync(file)) continue;
+      let row = { id: name, dir, file, filename: 'clip.mp4', title: 'Video', finishedAt: fs.statSync(file).mtimeMs };
+      try { Object.assign(row, JSON.parse(fs.readFileSync(metaFile, 'utf8'))); } catch { /* no meta */ }
+      row.dir = dir; row.file = file;
+      loadRow(row);
+    }
+  } catch { /* ignore */ }
+  sweepJobs();
+}
+
+restoreReadyClips();
+setInterval(() => sweepJobs(), 60 * 1000).unref();
 
 let ytdlpOk = null;
 let ffmpegOk = null;
@@ -215,13 +286,12 @@ function sweepJobs() {
   for (const [id, job] of jobs) {
     if (job.status === 'downloading' || job.status === 'processing') continue;
     const expired = now - (job.finishedAt || job.createdAt) > JOB_TTL_MS;
-    const dlExpired = job.downloadedAt && now - job.downloadedAt > POST_DL_TTL_MS;
-    if (expired || dlExpired) {
+    if (expired) {
       removeDirQuiet(job.dir);
       jobs.delete(id);
     }
   }
-  // Enforce total disk budget across completed clips
+  // Enforce total disk budget across completed clips (oldest first)
   let total = 0;
   const doneJobs = [];
   for (const job of jobs.values()) {
@@ -231,12 +301,13 @@ function sweepJobs() {
     }
   }
   doneJobs.sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0));
-  while (total > MAX_CACHE_BYTES && doneJobs.length > 1) {
+  while (total > MAX_CACHE_BYTES && doneJobs.length) {
     const old = doneJobs.shift();
     total -= old.size || 0;
     removeDirQuiet(old.dir);
     jobs.delete(old.id);
   }
+  persistIndex();
 }
 
 async function probeMedia(filePath) {
@@ -419,6 +490,7 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
 
     const fullDur = Number(info.duration) || 0;
     job.title = info.title || 'Video';
+    job.thumbnail = info.thumbnail || (Array.isArray(info.thumbnails) && info.thumbnails.length ? info.thumbnails[info.thumbnails.length - 1]?.url : '') || job.thumbnail || '';
     const picked = pickBestResolution(info);
     job._estW = picked.width;
     job._estH = picked.height;
@@ -586,6 +658,7 @@ async function runClipJob(job, { url, startRaw, endRaw }) {
     job.finishedAt = Date.now();
     const resTag = job.width && job.height ? `${Math.min(job.width, job.height)}p` : (job.height ? `${job.height}p` : '');
     job.detail = `Ready · ${resTag ? `${resTag} · ` : ''}${(job.size / 1048576).toFixed(1)} MB`;
+    persistIndex();
     sweepJobs();
   } catch (e) {
     if (job.cancelled || job.status === 'cancelled') {
@@ -637,6 +710,7 @@ export async function startClip({ url, start, end }) {
     etaSec: null,
     speed: '',
     title: '',
+    thumbnail: '',
     filename: 'clip.mp4',
     file: null,
     size: 0,
@@ -650,6 +724,7 @@ export async function startClip({ url, start, end }) {
     downloadedAt: 0,
     cancelled: false,
     proc: null,
+    url: validUrl,
   };
   jobs.set(id, job);
   activeJobId = id;
@@ -678,8 +753,41 @@ export function getJob(id) {
     duration: job.duration,
     durationText: job.durationText,
     error: job.error,
+    thumbnail: job.thumbnail || '',
     downloadUrl: job.status === 'done' ? `/api/clip/download?id=${encodeURIComponent(job.id)}` : '',
+    finishedAt: job.finishedAt || 0,
+    expiresAt: job.status === 'done' && job.finishedAt ? job.finishedAt + JOB_TTL_MS : 0,
+    remainingMs: job.status === 'done' && job.finishedAt ? Math.max(0, job.finishedAt + JOB_TTL_MS - Date.now()) : 0,
   };
+}
+
+export function listReady() {
+  sweepJobs();
+  const now = Date.now();
+  const clips = [...jobs.values()]
+    .filter(j => j.status === 'done' && j.file && fs.existsSync(j.file))
+    .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))
+    .map(j => {
+      const remainingMs = Math.max(0, (j.finishedAt || 0) + JOB_TTL_MS - now);
+      return {
+        id: j.id,
+        title: j.title || 'Video',
+        filename: j.filename || 'clip.mp4',
+        thumbnail: j.thumbnail || '',
+        duration: j.duration || 0,
+        durationText: j.durationText || '',
+        width: j.width || 0,
+        height: j.height || 0,
+        resolution: resolutionOf(j),
+        size: j.size || 0,
+        finishedAt: j.finishedAt || 0,
+        expiresAt: (j.finishedAt || 0) + JOB_TTL_MS,
+        remainingMs,
+        remainingText: formatRemaining(remainingMs),
+        downloadUrl: `/api/clip/download?id=${encodeURIComponent(j.id)}`,
+      };
+    });
+  return { ttlMs: JOB_TTL_MS, clips };
 }
 
 function killProc(proc) {
@@ -712,6 +820,7 @@ export function cancelJob(id) {
   removeDirQuiet(job.dir);
   job.file = null;
   if (activeJobId === job.id) activeJobId = null;
+  persistIndex();
   return true;
 }
 
@@ -722,9 +831,6 @@ export function openDownload(id) {
     file: job.file,
     filename: job.filename,
     size: fs.statSync(job.file).size,
-    markDownloaded: () => {
-      job.downloadedAt = Date.now();
-      setTimeout(() => sweepJobs(), POST_DL_TTL_MS + 1000).unref();
-    },
+    markDownloaded: () => { job.downloadedAt = Date.now(); },
   };
 }

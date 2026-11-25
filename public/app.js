@@ -557,7 +557,7 @@ async function boot() {
 boot();
 
 // ---------- video clipper ----------
-const C = { meta: null, jobId: null, poll: null, ownBusy: false };
+const C = { meta: null, jobId: null, poll: null, ownBusy: false, autoStarted: new Set(), justFinished: false, ready: [] };
 
 function setClipOpen(open) {
   $('#clipView').hidden = !open;
@@ -568,6 +568,7 @@ function setClipOpen(open) {
   if (open) {
     window.scrollTo({ top: 0, behavior: 'instant' });
     ensureClipPoll();
+    loadClipReady({ force: true });
     setTimeout(() => $('#clipUrl').focus(), 20);
   } else if (!C.ownBusy) {
     clipStopPoll();
@@ -596,6 +597,106 @@ function clipSetOwnBusy(busy) {
   $('#clipCancel').hidden = !busy;
   if (busy) $('#clipGo').disabled = true;
 }
+
+function clipAutoOn() {
+  const el = $('#clipAutoDl');
+  if (!el) return true;
+  return el.checked;
+}
+
+function startMp4Download(url, filename) {
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.setAttribute('download', filename || 'clip.mp4');
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function renderClipReady(clips) {
+  C.ready = Array.isArray(clips) ? clips : [];
+  const list = $('#clipReadyList');
+  const empty = $('#clipReadyEmpty');
+  if (!list) return;
+  list.replaceChildren();
+  if (!C.ready.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+  for (const c of C.ready) {
+    const thumb = c.thumbnail
+      ? h('img', { class: 'clip-ready-thumb', alt: '', src: imgUrl(c.thumbnail) })
+      : h('div', { class: 'clip-ready-ph' }, 'MP4');
+    if (thumb.tagName === 'IMG') thumb.onerror = () => { thumb.replaceWith(h('div', { class: 'clip-ready-ph' }, 'MP4')); };
+    const size = c.size ? `${(c.size / 1048576).toFixed(1)} MB` : '';
+    const res = c.resolution ? (c.width && c.height ? `${c.resolution} (${c.width}×${c.height})` : c.resolution) : '';
+    const len = c.durationText ? `Length ${c.durationText}` : '';
+    const meta = [len, res, size].filter(Boolean).join(' · ');
+    const a = h('a', {
+      class: 'btn btn-strong clip-dl',
+      href: c.downloadUrl,
+      download: c.filename || 'clip.mp4',
+      rel: 'noopener',
+    }, '⤓ Download');
+    a.addEventListener('click', ev => {
+      ev.preventDefault();
+      startMp4Download(c.downloadUrl, c.filename || 'clip.mp4');
+    });
+    list.append(h('article', { class: 'clip-ready-item', 'data-id': c.id },
+      thumb,
+      h('div', { class: 'clip-ready-info' },
+        h('div', { class: 'clip-ready-title' }, c.title || c.filename || 'Clip'),
+        meta ? h('div', { class: 'clip-ready-meta' }, meta) : '',
+        h('div', { class: 'clip-ready-exp' }, c.remainingText ? `Expires in ${c.remainingText.replace(/ left$/, '')}` : 'Expires soon'),
+      ),
+      a,
+    ));
+  }
+}
+
+let lastReadyAt = 0;
+let readyInflight = null;
+async function loadClipReady({ autoId, force } = {}) {
+  const now = Date.now();
+  if (!autoId && !force && now - lastReadyAt < 4000 && C.ready) {
+    // still refresh expiry labels from the last payload if we have one
+    if (C.ready.length) renderClipReady(C.ready.map(c => {
+      const remainingMs = Math.max(0, (c.expiresAt || 0) - now);
+      return { ...c, remainingMs, remainingText: remainingMs <= 0 ? 'Expiring now' : (remainingMs < 60000 ? `${Math.round(remainingMs/1000)}s left` : `${Math.floor(remainingMs/60000)}m ${Math.round((remainingMs/1000)%60)}s left`) };
+    }));
+    return;
+  }
+  if (readyInflight && !autoId && !force) return readyInflight;
+  lastReadyAt = now;
+  readyInflight = (async () => {
+  try {
+    const r = await api('/api/clip/ready');
+    renderClipReady(r.clips || []);
+    if (autoId && clipAutoOn()) {
+      const c = C.ready.find(x => x.id === autoId);
+      if (c && !C.autoStarted.has(autoId)) {
+        C.autoStarted.add(autoId);
+        startMp4Download(c.downloadUrl, c.filename || 'clip.mp4');
+      }
+    }
+  } catch { /* list retries on the next poll */ }
+  finally { readyInflight = null; }
+  })();
+  return readyInflight;
+}
+
+(function initClipAuto() {
+  const el = $('#clipAutoDl');
+  if (!el) return;
+  const saved = localStorage.getItem('exx-clip-autodl');
+  if (saved === '0') el.checked = false;
+  else el.checked = true;
+  el.addEventListener('change', () => localStorage.setItem('exx-clip-autodl', el.checked ? '1' : '0'));
+})();
 
 function paintClipBar(prog, { stage, eta, detail, ready, foreign } = {}) {
   const pct = Math.max(0, Math.min(100, Math.round(prog || 0)));
@@ -648,20 +749,12 @@ async function tickClipProgress() {
       const extra = [j.speed, j.detail].filter(Boolean).join(' · ');
       paintClipBar(j.progress, { stage: stageLabel(j), eta, detail: extra, ready: j.status === 'done' });
       if (j.status === 'done') {
+        const doneId = C.jobId;
         clipSetOwnBusy(false);
-        $('#clipDoneName').textContent = j.filename;
-        const parts = [
-          j.resolution ? `${j.resolution} (${j.width}×${j.height})` : '',
-          j.durationText ? `Duration ${j.durationText}` : '',
-          j.size ? `${(j.size / 1048576).toFixed(1)} MB` : '',
-        ].filter(Boolean);
-        $('#clipDoneMeta').textContent = parts.join(' · ');
-        const dl = $('#clipDownload');
-        dl.href = j.downloadUrl;
-        dl.setAttribute('download', j.filename);
-        $('#clipDone').hidden = false;
+        C.justFinished = true;
         paintClipBar(100, { stage: 'Done', eta: 'Ready for next clip', detail: extra, ready: true });
         C.jobId = null;
+        loadClipReady({ autoId: doneId });
         if ($('#clipView').hidden) clipStopPoll();
       } else if (j.status === 'error' || j.status === 'cancelled') {
         clipSetOwnBusy(false);
@@ -687,12 +780,12 @@ async function tickClipProgress() {
           ready: false,
         });
       } else if (!C.ownBusy) {
-        const doneVisible = !$('#clipDone').hidden;
-        paintClipBar(doneVisible ? 100 : 0, {
+        paintClipBar(C.justFinished ? 100 : 0, {
           ready: true,
-          stage: doneVisible ? 'Done' : 'Ready for next clip',
+          stage: C.justFinished ? 'Done' : 'Ready for next clip',
           eta: 'Ready for next clip',
         });
+        if (!$('#clipView').hidden) loadClipReady();
       }
     }
   } catch { /* keep last paint; next tick retries */ }
@@ -744,7 +837,6 @@ $('#clipClear').addEventListener('click', () => {
   $('#clipEnd').value = '';
   $('#clipPreview').hidden = true;
   $('#clipResetTimes').hidden = true;
-  $('#clipDone').hidden = true;
   clipShowErr('');
   paintClipBar(0, { ready: true, stage: 'Ready for next clip' });
   $('#clipUrl').focus();
@@ -755,7 +847,6 @@ $('#clipForm').addEventListener('submit', async e => {
   const url = $('#clipUrl').value.trim();
   if (!url) return;
   clipShowErr('');
-  if (!C.ownBusy) $('#clipDone').hidden = true;
   $('#clipFetch').classList.add('busy');
   $('#clipFetch').disabled = true;
   try {
@@ -774,7 +865,7 @@ $('#clipGo').addEventListener('click', async () => {
   const url = $('#clipUrl').value.trim();
   if (!url) { clipShowErr('Paste a video URL first.'); $('#clipUrl').focus(); return; }
   clipShowErr('');
-  $('#clipDone').hidden = true;
+  C.justFinished = false;
   paintClipBar(2, { stage: 'Starting…', eta: 'Estimating time…', detail: 'Starting…' });
   clipSetOwnBusy(true);
   ensureClipPoll();
@@ -810,7 +901,6 @@ $('#clipCancel').addEventListener('click', async () => {
   clipSetOwnBusy(false);
   C.jobId = null;
   $('#clipCancel').disabled = false;
-  $('#clipDone').hidden = true;
   clipShowErr('');
   paintClipBar(0, { ready: true, stage: 'Ready for next clip', eta: 'Ready for next clip', detail: 'Cancelled. Ready for next clip.' });
   if ($('#clipView').hidden) clipStopPoll();
