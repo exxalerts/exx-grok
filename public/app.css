@@ -254,3 +254,126 @@ html, body { background: #000; }
 @media (max-width: 760px) {
   .x-box .x-grid { grid-auto-columns: minmax(240px, 80vw); grid-template-rows: repeat(2, minmax(200px, auto)); }
 }
+
+/* Clip tab (left of search bar) & Video Clipper view */
+.brand[role="button"] { cursor: pointer; }
+.clip-tab {
+  background: rgb(var(--red) / .18);
+  border: 1px solid rgb(var(--red) / .6);
+  color: #fff;
+  padding: 7px 14px;
+  font-weight: 700;
+}
+.clip-tab:hover { background: rgb(var(--red) / .32); }
+.clip-tab.active {
+  background: rgb(var(--red));
+  border-color: rgb(var(--red));
+  color: #fff;
+  box-shadow: 0 0 0 3px rgb(var(--red) / .28);
+}
+
+.clip-view { padding: 18px; display: flex; justify-content: center; }
+.clip-card {
+  width: min(860px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.clip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.clip-head h2 { margin: 0 0 4px; font-size: 20px; }
+.clip-head p { margin: 0; }
+.clip-form { display: flex; flex-direction: column; gap: 6px; }
+.clip-label { font-size: 12.5px; font-weight: 600; color: var(--text2); }
+.clip-url-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.clip-url-row input,
+.clip-field input {
+  background: #0d1016;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+  outline: none;
+}
+.clip-url-row input { flex: 1 1 320px; min-width: 0; }
+.clip-url-row input:focus,
+.clip-field input:focus {
+  border-color: rgb(var(--red));
+  box-shadow: 0 0 0 3px rgb(var(--red) / .25);
+}
+.clip-preview {
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #0d1016;
+  border: 1px solid var(--line);
+  align-items: center;
+}
+.clip-thumb {
+  width: 176px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #000;
+  flex-shrink: 0;
+}
+.clip-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.clip-title { font-weight: 700; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.clip-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.clip-badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .08);
+  border: 1px solid var(--line);
+  color: var(--text2);
+}
+.clip-badge.hi {
+  background: rgb(var(--red) / .18);
+  border-color: rgb(var(--red) / .5);
+  color: #fff;
+}
+.clip-note { color: #fbbf24; }
+.clip-controls { display: flex; flex-direction: column; gap: 12px; }
+.clip-times { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+.clip-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; min-width: 140px; }
+.clip-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.clip-actions .btn-strong,
+.clip-url-row .btn-strong { background: rgb(var(--red)); color: #fff; }
+.clip-prog-box { display: flex; flex-direction: column; gap: 6px; }
+.clip-bar { height: 8px; border-radius: 999px; background: #0d1016; border: 1px solid var(--line); overflow: hidden; }
+.clip-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, rgb(var(--red)), #f97316); transition: width .25s ease; }
+.clip-err {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(var(--red) / .14);
+  border: 1px solid rgb(var(--red) / .5);
+  color: #fecaca;
+}
+.clip-done {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgb(22 163 74 / .14);
+  border: 1px solid rgb(34 197 94 / .5);
+}
+.clip-done-info { min-width: 0; flex: 1; }
+.clip-done-name { font-weight: 700; word-break: break-all; }
+.clip-dl { background: #16a34a; color: #fff; text-decoration: none; display: inline-flex; align-items: center; }
+.clip-dl:hover { background: #15803d; text-decoration: none; }
+@media (max-width: 640px) {
+  .clip-view { padding: 10px; }
+  .clip-card { padding: 14px; }
+  .clip-preview { flex-direction: column; align-items: stretch; }
+  .clip-thumb { width: 100%; }
+}

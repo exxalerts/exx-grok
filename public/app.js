@@ -517,15 +517,18 @@ document.addEventListener('keydown', e => {
   if (typing) { if (e.key === 'Escape') e.target.blur(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (k === '/') { e.preventDefault(); $('#q').focus(); }
-  else if (k === 'r') refreshFocused();
-  else if (k === '?') $('#helpDlg').showModal();
+  const inClip = !$('#clipView').hidden;
+  if (k === 'escape' && inClip) { setClipOpen(false); return; }
+  if (k === '/') { e.preventDefault(); if (inClip) setClipOpen(false); $('#q').focus(); return; }
+  if (k === '?') { $('#helpDlg').showModal(); return; }
+  if (inClip) return; // keep feed shortcuts inactive while Clip tab is open
+  if (k === 'r') refreshFocused();
   else if (['1', '2', '3', '4', '5'].includes(k)) { const col = ['nat', 'loc', 'pol', 'int', 'x'][+k - 1]; const first = $('#b-' + col + ' .card'); $('#col-' + col).scrollIntoView({ behavior: 'smooth', block: 'start' }); if (first) select(first.dataset.id); }
   else if (k === 'j') move(1); else if (k === 'k') move(-1);
   else if ((k === 's' || k === 'l') && S.sel) generate(S.sel, k === 's' ? 'short' : 'long');
   else if (k === 'v' && S.sel) { const d = draftOf(S.sel); openVideo(S.cards.get(S.sel).item, d, { api, toast, imgUrl, setMedia: f => setMedia(S.sel, f), status: S.status }); }
 });
-let qT; $('#q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; renderTrending(); renderColumns(); }, 120); });
+let qT; $('#q').addEventListener('input', e => { if (!$('#clipView').hidden) setClipOpen(false); clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; renderTrending(); renderColumns(); }, 120); });
 document.addEventListener('click', e => { const b = e.target.closest('.col-refresh'); if (b) { e.preventDefault(); refreshCol(b.dataset.col); } });
 $('#help').addEventListener('click', () => $('#helpDlg').showModal());
 
@@ -552,3 +555,173 @@ async function boot() {
   setInterval(renderUpdated, 30e3);
 }
 boot();
+
+// ---------- video clipper ----------
+const C = { meta: null, jobId: null, poll: null };
+
+function setClipOpen(open) {
+  $('#clipView').hidden = !open;
+  $('#feedView').hidden = open;
+  const tab = $('#clipTab');
+  tab.classList.toggle('active', open);
+  tab.setAttribute('aria-pressed', open ? 'true' : 'false');
+  if (open) { window.scrollTo({ top: 0, behavior: 'instant' }); setTimeout(() => $('#clipUrl').focus(), 20); }
+}
+$('#clipTab').addEventListener('click', () => setClipOpen($('#clipView').hidden));
+$('#clipBack').addEventListener('click', () => setClipOpen(false));
+$('#brandHome').addEventListener('click', () => { if (!$('#clipView').hidden) setClipOpen(false); });
+$('#brandHome').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !$('#clipView').hidden) { e.preventDefault(); setClipOpen(false); } });
+
+function clipShowErr(msg) {
+  const el = $('#clipErr');
+  el.textContent = msg || '';
+  el.hidden = !msg;
+}
+function clipStopPoll() { if (C.poll) { clearInterval(C.poll); C.poll = null; } }
+function clipSetBusy(busy) {
+  $('#clipFetch').disabled = busy;
+  $('#clipGo').disabled = busy;
+  $('#clipGo').classList.toggle('busy', busy);
+  $('#clipCancel').hidden = !busy;
+}
+
+function renderClipMeta(info) {
+  C.meta = info;
+  const img = $('#clipThumb');
+  if (info.thumbnail) {
+    img.hidden = false;
+    img.src = imgUrl(info.thumbnail);
+    img.onerror = () => { img.hidden = true; };
+  } else {
+    img.hidden = true;
+    img.removeAttribute('src');
+  }
+  $('#clipTitle').textContent = info.title || 'Video';
+  const badges = [];
+  if (info.resolution) badges.push(h('span', { class: 'clip-badge hi' }, info.resolution + (info.width && info.height ? ` (${info.width}×${info.height})` : '')));
+  if (info.durationText) badges.push(h('span', { class: 'clip-badge' }, 'Duration: ' + info.durationText));
+  if (info.extractor) badges.push(h('span', { class: 'clip-badge' }, info.extractor));
+  $('#clipBadges').replaceChildren(...badges);
+
+  const note = $('#clipLimitNote');
+  if (info.tooLongForWhole) {
+    note.textContent = `This video is ${info.durationText} (whole-video cap is 15:00). Enter Start and End times up to 10:00 to clip a section.`;
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+  }
+  $('#clipPreview').hidden = false;
+  $('#clipStart').value = '0:00';
+  $('#clipEnd').value = info.durationText || '';
+  $('#clipResetTimes').hidden = !info.durationText;
+}
+
+$('#clipResetTimes').addEventListener('click', () => {
+  if (!C.meta) return;
+  $('#clipStart').value = '0:00';
+  $('#clipEnd').value = C.meta.durationText || '';
+});
+
+$('#clipClear').addEventListener('click', () => {
+  clipStopPoll();
+  C.meta = null;
+  C.jobId = null;
+  $('#clipUrl').value = '';
+  $('#clipStart').value = '';
+  $('#clipEnd').value = '';
+  $('#clipPreview').hidden = true;
+  $('#clipResetTimes').hidden = true;
+  $('#clipProgBox').hidden = true;
+  $('#clipBarFill').style.width = '0%';
+  $('#clipDone').hidden = true;
+  clipShowErr('');
+  clipSetBusy(false);
+  $('#clipUrl').focus();
+});
+
+$('#clipForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const url = $('#clipUrl').value.trim();
+  if (!url) return;
+  clipShowErr('');
+  $('#clipDone').hidden = true;
+  $('#clipFetch').classList.add('busy');
+  $('#clipFetch').disabled = true;
+  try {
+    const info = await api('/api/clip/info', { method: 'POST', body: { url } });
+    renderClipMeta(info);
+  } catch (err) {
+    $('#clipPreview').hidden = true;
+    clipShowErr(err.message);
+  } finally {
+    $('#clipFetch').classList.remove('busy');
+    $('#clipFetch').disabled = false;
+  }
+});
+
+$('#clipGo').addEventListener('click', async () => {
+  const url = $('#clipUrl').value.trim();
+  if (!url) { clipShowErr('Paste a video URL first.'); $('#clipUrl').focus(); return; }
+  clipStopPoll();
+  clipShowErr('');
+  $('#clipDone').hidden = true;
+  $('#clipProgBox').hidden = false;
+  $('#clipBarFill').style.width = '2%';
+  $('#clipProgText').textContent = 'Starting…';
+  clipSetBusy(true);
+  try {
+    const r = await api('/api/clip/start', {
+      method: 'POST',
+      body: { url, start: $('#clipStart').value.trim(), end: $('#clipEnd').value.trim() },
+    });
+    C.jobId = r.jobId;
+    const pollOnce = async () => {
+      try {
+        const j = await api('/api/clip/status?id=' + encodeURIComponent(C.jobId));
+        $('#clipBarFill').style.width = Math.max(2, Math.min(100, j.progress || 0)) + '%';
+        $('#clipProgText').textContent = j.detail || j.status;
+        if (j.status === 'done') {
+          clipStopPoll();
+          clipSetBusy(false);
+          $('#clipDoneName').textContent = j.filename;
+          const parts = [
+            j.resolution ? `${j.resolution} (${j.width}×${j.height})` : '',
+            j.durationText ? `Duration ${j.durationText}` : '',
+            j.size ? `${(j.size / 1048576).toFixed(1)} MB` : '',
+          ].filter(Boolean);
+          $('#clipDoneMeta').textContent = parts.join(' · ');
+          const dl = $('#clipDownload');
+          dl.href = j.downloadUrl;
+          dl.setAttribute('download', j.filename);
+          $('#clipDone').hidden = false;
+        } else if (j.status === 'error') {
+          clipStopPoll();
+          clipSetBusy(false);
+          $('#clipProgBox').hidden = true;
+          clipShowErr(j.error || 'Clip failed.');
+        }
+      } catch (err) {
+        clipStopPoll();
+        clipSetBusy(false);
+        clipShowErr(err.message);
+      }
+    };
+    await pollOnce();
+    if (C.jobId && $('#clipDone').hidden && $('#clipErr').hidden) {
+      C.poll = setInterval(pollOnce, 750);
+    }
+  } catch (err) {
+    clipSetBusy(false);
+    $('#clipProgBox').hidden = true;
+    clipShowErr(err.message);
+  }
+});
+
+$('#clipCancel').addEventListener('click', async () => {
+  if (!C.jobId) return;
+  clipStopPoll();
+  await api('/api/clip/cancel', { method: 'POST', body: { id: C.jobId } }).catch(() => {});
+  clipSetBusy(false);
+  $('#clipProgBox').hidden = true;
+  clipShowErr('Cancelled.');
+});

@@ -14,7 +14,8 @@
 </head>
 <body>
   <header class="appbar">
-    <div class="brand"><img src="/icons/icon-192.png" alt="" width="30" height="30"><span>exx.grok</span></div>
+    <div class="brand" id="brandHome" role="button" tabindex="0" title="Back to feeds"><img src="/icons/icon-192.png" alt="" width="30" height="30"><span>exx.grok</span></div>
+    <button id="clipTab" type="button" class="btn clip-tab" aria-pressed="false" aria-controls="clipView">✂ Clip</button>
     <div class="search"><input id="q" type="search" placeholder="Filter all columns  ( / )" autocomplete="off" aria-label="Filter stories"></div>
     <div class="bar-right">
       <span id="keys" class="keys" title="Which keys are set up"></span>
@@ -27,7 +28,71 @@
 
   <div id="notices" class="notices"></div>
 
-  <main>
+  <section id="clipView" class="clip-view" hidden>
+    <div class="clip-card">
+      <div class="clip-head">
+        <div>
+          <h2>Video Clipper</h2>
+          <p class="muted small">Paste any video link (X, YouTube, news sites). Downloads highest available quality as MP4 (H.264/AAC).</p>
+        </div>
+        <button id="clipBack" type="button" class="btn btn-ghost">← Back to feeds</button>
+      </div>
+
+      <form id="clipForm" class="clip-form">
+        <label class="clip-label" for="clipUrl">Video link</label>
+        <div class="clip-url-row">
+          <input id="clipUrl" type="url" placeholder="https://x.com/... or https://youtube.com/... or news article link" autocomplete="off" spellcheck="false" required>
+          <button id="clipFetch" type="submit" class="btn btn-strong">Fetch video</button>
+          <button id="clipClear" type="button" class="btn btn-ghost">Clear</button>
+        </div>
+      </form>
+
+      <div id="clipPreview" class="clip-preview" hidden>
+        <img id="clipThumb" class="clip-thumb" alt="" hidden>
+        <div class="clip-meta">
+          <div id="clipTitle" class="clip-title"></div>
+          <div id="clipBadges" class="clip-badges"></div>
+          <div id="clipLimitNote" class="clip-note small" hidden></div>
+        </div>
+      </div>
+
+      <div id="clipControls" class="clip-controls">
+        <div class="clip-times">
+          <label class="clip-field">
+            <span class="small muted">Start time (mm:ss or hh:mm:ss)</span>
+            <input id="clipStart" type="text" placeholder="0:00" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="clip-field">
+            <span class="small muted">End time (blank = full duration)</span>
+            <input id="clipEnd" type="text" placeholder="Full video" autocomplete="off" spellcheck="false">
+          </label>
+          <button id="clipResetTimes" type="button" class="btn btn-ghost" hidden>Full video</button>
+        </div>
+        <div class="clip-actions">
+          <button id="clipGo" type="button" class="btn btn-strong">Prepare MP4</button>
+          <button id="clipCancel" type="button" class="btn btn-ghost" hidden>Cancel</button>
+          <span class="muted small">Leave Start and End as-is to download the whole video. Max 15m whole / 10m clip (350 MB).</span>
+        </div>
+      </div>
+
+      <div id="clipProgBox" class="clip-prog-box" hidden>
+        <div class="clip-bar"><div id="clipBarFill" class="clip-bar-fill"></div></div>
+        <div id="clipProgText" class="small muted"></div>
+      </div>
+
+      <div id="clipErr" class="clip-err small" hidden></div>
+
+      <div id="clipDone" class="clip-done" hidden>
+        <div class="clip-done-info">
+          <div id="clipDoneName" class="clip-done-name"></div>
+          <div id="clipDoneMeta" class="small muted"></div>
+        </div>
+        <a id="clipDownload" class="btn btn-strong clip-dl" href="#" download>⤓ Download MP4</a>
+      </div>
+    </div>
+  </section>
+
+  <main id="feedView">
     <section class="top5">
       <div class="section-head"><h2>Top 5 posts this week</h2><span id="topNote" class="muted small"></span><span class="col-head-right"><button type="button" class="col-refresh" data-col="top" title="Refresh Top 5" aria-label="Refresh Top 5"><span class="ico">↻</span></button><span class="count" id="n-top">5</span></span></div>
       <div id="top" class="top-grid"></div>

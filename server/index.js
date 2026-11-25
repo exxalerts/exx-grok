@@ -12,6 +12,7 @@ import { TOP_SNAPSHOT } from './snapshot.js';
 import * as Trends from './trends.js';
 import * as Auth from './auth.js';
 import * as Marks from './marks.js';
+import * as Clip from './clip.js';
 
 const PUBLIC = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data');
@@ -239,7 +240,7 @@ async function route(req, res) {
 
     if (p === '/api/status') return json(res, 200, {
       keys: { ai: has.ai, xRead: has.bearer || has.oauth1, xPost: cfg.allowPublish && has.oauth1 }, publish: cfg.allowPublish, auth: Auth.authEnabled(), dryRun: cfg.dryRun, model: has.ai ? cfg.aiModel : null,
-      username: cfg.xUsername, accounts: cfg.feedAccounts, refresh: { news: cfg.newsMin, x: cfg.xFeedMin, top: cfg.topMin, trends: cfg.trendsMin }, notices: setupNotices(), ffmpeg: await hasFfmpeg(),
+      username: cfg.xUsername, accounts: cfg.feedAccounts, refresh: { news: cfg.newsMin, x: cfg.xFeedMin, top: cfg.topMin, trends: cfg.trendsMin }, notices: setupNotices(), ffmpeg: await hasFfmpeg(), ytdlp: await Clip.hasYtdlp(),
     });
 
     if (p === '/api/feeds') {
@@ -343,6 +344,46 @@ async function route(req, res) {
       const { item, instructions, draft } = await readJson(req);
       try { return json(res, 200, await AI.footagePlan(item, String(instructions || '').slice(0, 2000), String(draft || '').slice(0, 4000))); }
       catch (e) { return json(res, 502, { error: e.message }); }
+    }
+
+    if (p === '/api/clip/info' && req.method === 'POST') {
+      const { url: rawUrl } = await readJson(req);
+      try { return json(res, 200, await Clip.getVideoInfo(rawUrl)); }
+      catch (e) { return json(res, e.code === 400 ? 400 : 502, { error: e.message }); }
+    }
+
+    if (p === '/api/clip/start' && req.method === 'POST') {
+      const { url: rawUrl, start, end } = await readJson(req);
+      try { return json(res, 202, await Clip.startClip({ url: rawUrl, start, end })); }
+      catch (e) { return json(res, e.code && e.code < 500 ? e.code : 500, { error: e.message }); }
+    }
+
+    if (p === '/api/clip/status' && req.method === 'GET') {
+      const job = Clip.getJob(url.searchParams.get('id'));
+      if (!job) return json(res, 404, { error: 'Clip job not found or expired.' });
+      return json(res, 200, job);
+    }
+
+    if (p === '/api/clip/cancel' && req.method === 'POST') {
+      const { id } = await readJson(req);
+      return json(res, 200, { ok: Clip.cancelJob(id) });
+    }
+
+    if (p === '/api/clip/download' && req.method === 'GET') {
+      const dl = Clip.openDownload(url.searchParams.get('id'));
+      if (!dl) return json(res, 404, { error: 'Clip file expired or not ready.' });
+      const encName = encodeURIComponent(dl.filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': dl.size,
+        'Content-Disposition': `attachment; filename="${dl.filename}"; filename*=UTF-8''${encName}`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      const stream = fs.createReadStream(dl.file);
+      stream.on('error', () => { if (!res.headersSent) res.writeHead(500); res.end(); });
+      res.on('finish', () => dl.markDownloaded());
+      return stream.pipe(res);
     }
 
     if (p === '/api/convert' && req.method === 'POST') { // WebM/Opus -> MP4 (H.264/AAC) for X, only if ffmpeg is installed
