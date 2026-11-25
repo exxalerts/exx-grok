@@ -1,5 +1,5 @@
 :root {
-  --nat: 37 99 235; --loc: 22 163 74; --pol: 124 58 237; --int: 15 23 42; --x: 100 116 139; --fb: 24 119 242; --ig: 225 48 108; --red: 220 38 38;
+  --nat: 37 99 235; --loc: 191 87 0; --pol: 124 58 237; --int: 139 26 26; --x: 100 116 139; --fb: 24 119 242; --ig: 225 48 108; --red: 220 38 38;
   --bg: #f3f5f9; --card: #ffffff; --text: #0f172a; --text2: #475569; --text3: #64748b; --line: #e2e8f0;
   --bar: #0b1220; --radius: 16px; --shadow: 0 2px 10px rgb(15 23 42 / .07);
   color-scheme: light dark;
@@ -206,37 +206,6 @@ html, body { background: #000; }
 .section-head .col-refresh { color: var(--text); border-color: rgb(var(--x) / .4); background: rgb(var(--x) / .1); }
 .section-head .col-refresh:hover { background: rgb(var(--x) / .2); }
 .section-head .count { background: rgb(var(--x) / .18); color: var(--text); border-radius: 999px; padding: 1px 10px; font-size: 12px; }
-
-/* International: a white column with dark text, so it stays readable on the dark site */
-.col[data-tone="int"] {
-  --tone: 15 23 42;
-  --card: #ffffff;
-  --text: #0f172a;
-  --text2: #334155;
-  --text3: #475569;
-  --line: #cbd5e1;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  color: #0f172a;
-}
-.col[data-tone="int"] .col-head {
-  background: #ffffff;
-  color: #0f172a;
-  border-bottom: 1px solid #cbd5e1;
-}
-.col[data-tone="int"] .col-refresh {
-  color: #0f172a;
-  border-color: #94a3b8;
-  background: #e2e8f0;
-}
-.col[data-tone="int"] .col-refresh:hover { background: #cbd5e1; }
-.col[data-tone="int"] .count { background: #e2e8f0; color: #0f172a; }
-.col[data-tone="int"] .col-msg { background: #ffffff; color: #334155; border-color: #cbd5e1; }
-.col[data-tone="int"] .card { background: #ffffff; color: #0f172a; border-color: #cbd5e1; box-shadow: 0 1px 4px rgb(15 23 42 / .08); }
-.col[data-tone="int"] .card .title { color: #0f172a; }
-.col[data-tone="int"] .card .sum { color: #334155; }
-.col[data-tone="int"] .meta, .col[data-tone="int"] .card .why, .col[data-tone="int"] .card .links a { color: #475569; }
-.col[data-tone="int"] .pill { color: #0f172a; }
 
 /* X feed: full-width box under the four news columns, exactly two rows, newest on the left */
 .x-box { margin-top: 14px; }

@@ -9,7 +9,7 @@ const SRC_RGB = {
   'BBC World': '187 0 0', 'Fox World': '29 78 216', 'NBC World': '147 51 234', 'ABC World': '234 88 12', 'CBS World': '1 80 170', 'Sky News': '15 23 42', 'Al Jazeera': '185 28 28', 'Reuters': '255 128 0',
   '@EricLDaugh': '59 130 246', '@LeadingReport': '234 88 12', '@CollinRugg': '16 185 129', '@Breaking911': '220 38 38', '@NickSortor': '168 85 247', '@nicksortor': '168 85 247',
 };
-const TONE = { nat: '37 99 235', loc: '22 163 74', pol: '124 58 237', int: '15 23 42', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
+const TONE = { nat: '37 99 235', loc: '191 87 0', pol: '124 58 237', int: '139 26 26', x: '100 116 139', fb: '24 119 242', ig: '225 48 108' };
 const NAT_SOURCES = ['All', 'Fox News', 'CNN', 'ABC News', 'NBC News', 'The Independent', 'Axios', 'The Hill', 'Associated Press'];
 
 const S = { posted: {}, status: null, feeds: null, q: '', natSrc: 'All', drafts: new Map(), cards: new Map(), sel: null, lastUpdated: 0 };
