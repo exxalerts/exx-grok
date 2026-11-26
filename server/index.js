@@ -13,6 +13,7 @@ import * as Trends from './trends.js';
 import * as Auth from './auth.js';
 import * as Marks from './marks.js';
 import * as Clip from './clip.js';
+import * as YtDiag from './yt-sites-diag.js';
 
 const PUBLIC = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data');
@@ -373,6 +374,12 @@ async function route(req, res) {
 
     if (p === '/api/clip/ready' && req.method === 'GET') {
       return json(res, 200, Clip.listReady());
+    }
+
+    // Temporary: probe SnapYT / YouTubeGrab from this server's egress IP. Remove after the test.
+    if (p === '/api/clip/diag-yt' && req.method === 'GET') {
+      if (url.searchParams.get('run') === '1') YtDiag.startDiag();
+      return json(res, 200, YtDiag.getDiag());
     }
 
     if (p === '/api/clip/download' && req.method === 'GET') {
